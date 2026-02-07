@@ -205,14 +205,16 @@ struct RunningAppsMenu: App {
     @MainActor
     private func generateMenuIcon() -> NSImage? {
         let view = HStack(spacing: 2) {
-            Image(systemName: "memorychip").frame(width: 16, height: 16)
+            Image(systemName: "memorychip").frame(width: 20, height: 20)
             Text("\(Int(monitor.memoryUsagePercentage))%")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
         }
+            .foregroundStyle(.windowBackground)
         .padding(.horizontal, 4)
         
         let renderer = ImageRenderer(content: view)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        renderer.colorMode = .extendedLinear
         return renderer.nsImage
     }
     
@@ -225,11 +227,7 @@ struct RunningAppsMenu: App {
         MenuBarExtra {
             VStack(alignment: .leading, spacing: 10) {
                 headerView
-                
                 appScrollView
-                
-                Divider()
-                
                 Button("Thoát Menu Bar App") {
                     NSApplication.shared.terminate(nil)
                 }
