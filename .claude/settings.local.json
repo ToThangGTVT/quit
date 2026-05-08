@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/usr/bin/nettop -l 1 -x -P -n)",
+      "Bash(xxd)"
+    ]
+  }
+}

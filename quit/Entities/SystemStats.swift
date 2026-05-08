@@ -3,6 +3,8 @@ import SwiftUI
 struct SystemStats {
     let memoryUsagePercentage: Double
     let memoryPressure: Int
+    let netRxKBs: Double  // system-wide download KB/s
+    let netTxKBs: Double  // system-wide upload KB/s
 
     var pressureText: String {
         if memoryPressure == 1 { return "Thấp" }

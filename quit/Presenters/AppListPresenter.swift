@@ -4,7 +4,7 @@ import Observation
 @Observable
 class AppListPresenter: AppMonitorInteractorOutput {
     private var rawEntities: [AppEntity] = []
-    var systemStats = SystemStats(memoryUsagePercentage: 0, memoryPressure: 0)
+    var systemStats = SystemStats(memoryUsagePercentage: 0, memoryPressure: 0, netRxKBs: 0, netTxKBs: 0)
     var sortOrder = [KeyPathComparator(\AppEntity.memory, order: .reverse)]
 
     var appEntities: [AppEntity] { rawEntities.sorted(using: sortOrder) }
@@ -28,14 +28,18 @@ class AppListPresenter: AppMonitorInteractorOutput {
         apps: [NSRunningApplication],
         memoryMap: [Int32: Double],
         cpuMap: [Int32: Double],
+        netMap: [Int32: (rx: Double, tx: Double)],
         stats: SystemStats
     ) {
         rawEntities = apps.map { app in
-            AppEntity(
-                id: app.processIdentifier,
+            let pid = app.processIdentifier
+            return AppEntity(
+                id: pid,
                 name: app.localizedName ?? "Unknown",
-                memory: memoryMap[app.processIdentifier] ?? 0,
-                cpu: cpuMap[app.processIdentifier] ?? 0,
+                memory: memoryMap[pid] ?? 0,
+                cpu: cpuMap[pid] ?? 0,
+                netRxKBs: netMap[pid]?.rx ?? 0,
+                netTxKBs: netMap[pid]?.tx ?? 0,
                 isRegular: app.activationPolicy == .regular,
                 runningApp: app
             )

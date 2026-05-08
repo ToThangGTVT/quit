@@ -9,6 +9,12 @@ struct DetailWindowView: View {
     private var appsRows: [AppEntity]       { presenter.appEntities.filter { $0.isRegular } }
     private var backgroundRows: [AppEntity] { presenter.appEntities.filter { !$0.isRegular } }
 
+    private static func formatNet(_ kbs: Double) -> String {
+        kbs >= 1024
+            ? String(format: "%.1f MB/s", kbs / 1024)
+            : String(format: "%.0f KB/s", kbs)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -39,6 +45,24 @@ struct DetailWindowView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .width(80)
+                TableColumn("↓ Mạng", value: \AppEntity.netRxKBs) { entity in
+                    Text(entity.netRxKBs > 0
+                         ? Self.formatNet(entity.netRxKBs)
+                         : "-")
+                        .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .foregroundColor(entity.netRxKBs > 100 ? .blue : .primary)
+                }
+                .width(75)
+                TableColumn("↑ Mạng", value: \AppEntity.netTxKBs) { entity in
+                    Text(entity.netTxKBs > 0
+                         ? Self.formatNet(entity.netTxKBs)
+                         : "-")
+                        .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .foregroundColor(entity.netTxKBs > 100 ? .orange : .primary)
+                }
+                .width(75)
             } rows: {
                 Section("Ứng dụng (\(appsRows.count))") {
                     ForEach(appsRows) { TableRow($0) }
@@ -50,7 +74,7 @@ struct DetailWindowView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 440, minHeight: 480)
+        .frame(minWidth: 600, minHeight: 480)
     }
 
     private var toolbar: some View {
@@ -66,6 +90,9 @@ struct DetailWindowView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                 Label(String(format: "RAM %.0f MB", totalRAM), systemImage: "memorychip")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                Label("↓ \(Self.formatNet(presenter.systemStats.netRxKBs))  ↑ \(Self.formatNet(presenter.systemStats.netTxKBs))", systemImage: "network")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
             }

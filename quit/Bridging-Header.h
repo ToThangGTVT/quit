@@ -9,5 +9,7 @@
 #define Bridging_Header_h
 
 #include <libproc.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 
 #endif // !Bridging_Header_h
