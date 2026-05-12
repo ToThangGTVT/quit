@@ -7,7 +7,8 @@ struct DetailWindowView: View {
     @State private var selection = Set<Int32>()
 
     private var appsRows: [AppEntity]       { presenter.appEntities.filter { $0.isRegular } }
-    private var backgroundRows: [AppEntity] { presenter.appEntities.filter { !$0.isRegular } }
+    private var backgroundRows: [AppEntity] { presenter.appEntities.filter { $0.isGUIApp && !$0.isRegular } }
+    private var processRows: [AppEntity]    { presenter.appEntities.filter { !$0.isGUIApp } }
 
     private static func formatNet(_ kbs: Double) -> String {
         kbs >= 1024
@@ -25,11 +26,20 @@ struct DetailWindowView: View {
                         if let icon = entity.icon {
                             Image(nsImage: icon).resizable().frame(width: 16, height: 16)
                         } else {
-                            Color.clear.frame(width: 16, height: 16)
+                            Image(systemName: "gearshape.fill")
+                                .frame(width: 16, height: 16)
+                                .foregroundColor(.secondary)
                         }
                         Text(entity.name).lineLimit(1)
                     }
                 }
+                TableColumn("PID") { entity in
+                    Text("\(entity.id)")
+                        .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .foregroundColor(.secondary)
+                }
+                .width(50)
                 TableColumn("CPU", value: \AppEntity.cpu) { entity in
                     Text(String(format: "%.1f%%", entity.cpu))
                         .monospacedDigit()
@@ -70,11 +80,14 @@ struct DetailWindowView: View {
                 Section("Nền (\(backgroundRows.count))") {
                     ForEach(backgroundRows) { TableRow($0) }
                 }
+                Section("Tiến trình (\(processRows.count))") {
+                    ForEach(processRows) { TableRow($0) }
+                }
             }
             Divider()
             footer
         }
-        .frame(minWidth: 600, minHeight: 480)
+        .frame(minWidth: 680, minHeight: 480)
     }
 
     private var toolbar: some View {
@@ -86,7 +99,7 @@ struct DetailWindowView: View {
             let totalRAM = presenter.appEntities.reduce(0) { $0 + $1.memory }
             let totalCPU = presenter.appEntities.reduce(0) { $0 + $1.cpu }
             HStack(spacing: 16) {
-                Label(String(format: "CPU %.0f%%", min(totalCPU, 999)), systemImage: "cpu")
+                Label(String(format: "CPU %.0f%%", min(totalCPU, 100)), systemImage: "cpu")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                 Label(String(format: "RAM %.0f MB", totalRAM), systemImage: "memorychip")
@@ -108,9 +121,10 @@ struct DetailWindowView: View {
 
     private var footer: some View {
         HStack {
-            let regular = presenter.appEntities.filter { $0.isRegular }.count
-            let bg = presenter.appEntities.filter { !$0.isRegular }.count
-            Text("\(regular) ứng dụng · \(bg) nền")
+            let regular = appsRows.count
+            let bg = backgroundRows.count
+            let procs = processRows.count
+            Text("\(regular) ứng dụng · \(bg) nền · \(procs) tiến trình")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
             Spacer()

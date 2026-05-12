@@ -8,6 +8,7 @@ class AppListPresenter: AppMonitorInteractorOutput {
     var sortOrder = [KeyPathComparator(\AppEntity.memory, order: .reverse)]
 
     var appEntities: [AppEntity] { rawEntities.sorted(using: sortOrder) }
+    var guiAppEntities: [AppEntity] { appEntities.filter { $0.isGUIApp } }
 
     private let interactor: AppMonitorInteractor
 
@@ -20,30 +21,16 @@ class AppListPresenter: AppMonitorInteractorOutput {
     func refresh() { interactor.refresh() }
 
     func forceQuit(_ entity: AppEntity) {
-        entity.runningApp.forceTerminate()
+        if let app = entity.runningApp {
+            app.forceTerminate()
+        } else {
+            kill(entity.id, SIGKILL)
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.interactor.refresh() }
     }
 
-    func interactorDidUpdate(
-        apps: [NSRunningApplication],
-        memoryMap: [Int32: Double],
-        cpuMap: [Int32: Double],
-        netMap: [Int32: (rx: Double, tx: Double)],
-        stats: SystemStats
-    ) {
-        rawEntities = apps.map { app in
-            let pid = app.processIdentifier
-            return AppEntity(
-                id: pid,
-                name: app.localizedName ?? "Unknown",
-                memory: memoryMap[pid] ?? 0,
-                cpu: cpuMap[pid] ?? 0,
-                netRxKBs: netMap[pid]?.rx ?? 0,
-                netTxKBs: netMap[pid]?.tx ?? 0,
-                isRegular: app.activationPolicy == .regular,
-                runningApp: app
-            )
-        }
+    func interactorDidUpdate(entities: [AppEntity], stats: SystemStats) {
+        rawEntities = entities
         systemStats = stats
     }
 }

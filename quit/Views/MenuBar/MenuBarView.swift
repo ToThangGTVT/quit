@@ -22,13 +22,13 @@ struct MenuBarView: View {
 
     private var appList: some View {
         Group {
-            if presenter.appEntities.isEmpty {
+            if presenter.guiAppEntities.isEmpty {
                 Text("Đang quét ứng dụng...").foregroundColor(.gray)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                List(presenter.appEntities) { entity in
+                List(presenter.guiAppEntities) { entity in
                     HStack {
-                        Button(action: { entity.runningApp.activate(options: .activateAllWindows) }) {
+                        Button(action: { entity.runningApp?.activate(options: .activateAllWindows) }) {
                             HStack {
                                 if let icon = entity.icon {
                                     Image(nsImage: icon).resizable().frame(width: 20, height: 20)
@@ -67,10 +67,10 @@ struct MenuBarHeaderView: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading) {
-                Text("Ứng dụng đang mở (\(presenter.appEntities.count))")
+                Text("Ứng dụng đang mở (\(presenter.guiAppEntities.count))")
                     .font(.headline)
                 HStack(spacing: 4) {
-                    let totalRAM = presenter.appEntities.reduce(0) { $0 + $1.memory }
+                    let totalRAM = presenter.guiAppEntities.reduce(0) { $0 + $1.memory }
                     Text("RAM: \(String(format: "%.1f", totalRAM)) MB")
                         .foregroundColor(.blue)
                     Text("|").foregroundColor(.gray.opacity(0.5))

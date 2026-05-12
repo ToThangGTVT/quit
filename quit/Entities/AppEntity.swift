@@ -7,8 +7,9 @@ struct AppEntity: Identifiable {
     let cpu: Double      // % (100 = 1 full core)
     let netRxKBs: Double // TCP download KB/s
     let netTxKBs: Double // TCP upload KB/s
-    let isRegular: Bool
-    let runningApp: NSRunningApplication
+    let runningApp: NSRunningApplication?
 
-    var icon: NSImage? { runningApp.icon }
+    var isRegular: Bool { runningApp?.activationPolicy == .regular }
+    var isGUIApp: Bool { runningApp != nil }
+    var icon: NSImage? { runningApp?.icon }
 }
