@@ -9,10 +9,10 @@ struct MenuBarView: View {
             MenuBarHeaderView(presenter: presenter)
             appList
             HStack {
-                Button("Mở cửa sổ") { router.openDetailWindow(presenter: presenter) }
+                Button(L.t("Trình quản lý Tác vụ", "Task Manager")) { router.openDetailWindow(presenter: presenter) }
                     .controlSize(.small)
                 Spacer()
-                Button("Thoát") { NSApplication.shared.terminate(nil) }
+                Button(L.t("Thoát", "Quit")) { NSApplication.shared.terminate(nil) }
                     .controlSize(.small)
             }
         }
@@ -23,7 +23,7 @@ struct MenuBarView: View {
     private var appList: some View {
         Group {
             if presenter.guiAppEntities.isEmpty {
-                Text("Đang quét ứng dụng...").foregroundColor(.gray)
+                Text(L.t("Đang quét ứng dụng...", "Scanning apps...")).foregroundColor(.gray)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 List(presenter.guiAppEntities) { entity in
@@ -67,14 +67,17 @@ struct MenuBarHeaderView: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading) {
-                Text("Ứng dụng đang mở (\(presenter.guiAppEntities.count))")
+                let openCount = presenter.guiAppEntities.count
+                Text(L.t("Ứng dụng đang mở (\(openCount))", "Open apps (\(openCount))"))
                     .font(.headline)
                 HStack(spacing: 4) {
                     let totalRAM = presenter.guiAppEntities.reduce(0) { $0 + $1.memory }
                     Text("RAM: \(String(format: "%.1f", totalRAM)) MB")
                         .foregroundColor(.blue)
                     Text("|").foregroundColor(.gray.opacity(0.5))
-                    Text("Áp lực: \(presenter.systemStats.pressureText) (\(presenter.systemStats.memoryPressure))")
+                    let pressure = presenter.systemStats.pressureText
+                    let level = presenter.systemStats.memoryPressure
+                    Text(L.t("Áp lực: \(pressure) (\(level))", "Pressure: \(pressure) (\(level))"))
                         .foregroundColor(presenter.systemStats.pressureColor)
                 }
                 .font(.system(size: 10, weight: .medium))
