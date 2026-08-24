@@ -22,11 +22,11 @@ struct MenuBarView: View {
 
     private var appList: some View {
         Group {
-            if presenter.guiAppEntities.isEmpty {
+            if presenter.openApps.isEmpty {
                 Text(L.t("Đang quét ứng dụng...", "Scanning apps...")).foregroundColor(.gray)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                List(presenter.guiAppEntities) { entity in
+                List(presenter.openApps) { entity in
                     HStack {
                         Button(action: { entity.runningApp?.activate(options: .activateAllWindows) }) {
                             HStack {
@@ -36,7 +36,7 @@ struct MenuBarView: View {
                                 VStack(alignment: .leading) {
                                     Text(entity.name).lineLimit(1)
                                     HStack(spacing: 6) {
-                                        Text("\(String(format: "%.0f", entity.memory)) MB")
+                                        Text(Fmt.memoryCell(entity.memory))
                                         Text("·").foregroundColor(.gray.opacity(0.5))
                                         Text("CPU \(String(format: "%.1f", entity.cpu))%")
                                     }
@@ -67,11 +67,11 @@ struct MenuBarHeaderView: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading) {
-                let openCount = presenter.guiAppEntities.count
+                let openCount = presenter.openApps.count
                 Text(L.t("Ứng dụng đang mở (\(openCount))", "Open apps (\(openCount))"))
                     .font(.headline)
                 HStack(spacing: 4) {
-                    let totalRAM = presenter.guiAppEntities.reduce(0) { $0 + $1.memory }
+                    let totalRAM = presenter.openApps.reduce(0) { $0 + $1.memory }
                     Text("RAM: \(String(format: "%.1f", totalRAM)) MB")
                         .foregroundColor(.blue)
                     Text("|").foregroundColor(.gray.opacity(0.5))

@@ -46,6 +46,7 @@ class AppMonitorInteractor {
     private var lastCpuTimeMap: [Int32: UInt64] = [:]
     private var lastNetTcpMap: [Int32: (rx: UInt64, tx: UInt64)] = [:]
     private var lastDiskIOMap: [Int32: (read: UInt64, write: UInt64)] = [:]
+    private var lastGPUTimeMap: [Int32: UInt64] = [:]
     private var lastProcSampleTime = Date()
 
     private var lastSysNetRx: UInt64 = 0
@@ -56,6 +57,8 @@ class AppMonitorInteractor {
     private var lastCpuTicks: (user: UInt64, system: UInt64, idle: UInt64, nice: UInt64)?
     private var lastCoreTicks: [(user: UInt64, system: UInt64, idle: UInt64, nice: UInt64)] = []
     private var lastSysSampleTime = Date()
+    private var primaryInterface = ""
+    private var primaryInterfaceAge = 0
 
     private var pathCache: [Int32: String] = [:]
     private var userCache: [Int32: String] = [:]
@@ -122,7 +125,9 @@ class AppMonitorInteractor {
                 let dIdle = Double(ticks.idle &- last.idle)
                 let total = dUser + dSys + dNice + dIdle
                 if total > 0 {
-                    stats.cpuUsage = min(((total - dIdle) / total) * 100.0, 100.0)
+                    // Giống Stats: tổng = user + system (nice nằm trong tổng tick
+                    // nhưng không cộng vào mức sử dụng).
+                    stats.cpuUsage = min(((dUser + dSys) / total) * 100.0, 100.0)
                     stats.cpuSystemUsage = min((dSys / total) * 100.0, 100.0)
                 }
             }
@@ -135,11 +140,22 @@ class AppMonitorInteractor {
         // Bộ nhớ
         applyMemoryStats()
 
-        // Mạng
-        let (sysRx, sysTx) = systemNetworkBytes()
+        // Mạng: chỉ đếm interface chính, giống Stats. Cộng hết mọi interface sẽ
+        // đếm trùng khi có VPN/utun hoặc nhiều card mạng.
+        if primaryInterface.isEmpty || primaryInterfaceAge >= 10 {
+            primaryInterface = NetworkAdapterInfo.current().bsdName
+            primaryInterfaceAge = 0
+        }
+        primaryInterfaceAge += 1
+
+        let (sysRx, sysTx) = systemNetworkBytes(interface: primaryInterface)
         if lastSysNetRx > 0 || lastSysNetTx > 0 {
-            let deltaRx = sysRx >= lastSysNetRx ? sysRx - lastSysNetRx : 0
-            let deltaTx = sysTx >= lastSysNetTx ? sysTx - lastSysNetTx : 0
+            var deltaRx = sysRx >= lastSysNetRx ? sysRx - lastSysNetRx : 0
+            var deltaTx = sysTx >= lastSysNetTx ? sysTx - lastSysNetTx : 0
+            // Bộ đếm bị reset khi đổi mạng sẽ tạo ra cú nhảy khổng lồ — bỏ mẫu đó.
+            let maxDelta = UInt64(10_000_000_000.0 / 8.0 * 1.5 * elapsed)
+            if deltaRx > maxDelta { deltaRx = 0 }
+            if deltaTx > maxDelta { deltaTx = 0 }
             stats.netRxKBs = Double(deltaRx) / elapsed / 1024
             stats.netTxKBs = Double(deltaTx) / elapsed / 1024
             stats.netTotalRx += deltaRx
@@ -159,6 +175,12 @@ class AppMonitorInteractor {
         lastDiskRead = disk.read
         lastDiskWrite = disk.write
         lastDiskBusyNs = disk.busyNs
+
+        var fs = statfs()
+        if statfs("/", &fs) == 0 {
+            stats.diskTotal = UInt64(fs.f_blocks) * UInt64(fs.f_bsize)
+            stats.diskFree = UInt64(fs.f_bavail) * UInt64(fs.f_bsize)
+        }
 
         stats.uptime = Date().timeIntervalSince(HardwareInfo.current.bootTime)
         lastSysSampleTime = now
@@ -180,6 +202,8 @@ class AppMonitorInteractor {
         let now = Date()
         let elapsed = max(now.timeIntervalSince(lastProcSampleTime), 0.001)
         let nettopMap = fetchNettopData()
+        let gpuTimeMap = gpuReader.readProcessGPUTime()
+        let psMap = fetchPSData()
 
         var rawPids = [Int32](repeating: 0, count: 8192)
         let pidCount = Int(proc_listallpids(&rawPids, Int32(MemoryLayout<Int32>.size * rawPids.count)))
@@ -189,6 +213,7 @@ class AppMonitorInteractor {
         var newCpuTimeMap: [Int32: UInt64] = [:]
         var newNetTcpMap: [Int32: (rx: UInt64, tx: UInt64)] = [:]
         var newDiskIOMap: [Int32: (read: UInt64, write: UInt64)] = [:]
+        var newGPUTimeMap: [Int32: UInt64] = [:]
         var entities: [AppEntity] = []
         var totalThreads = 0
         var totalHandles = 0
@@ -196,7 +221,7 @@ class AppMonitorInteractor {
         let coreCount = Double(ProcessInfo.processInfo.processorCount)
 
         for pid in livePids {
-            let usage = rusage(pid: pid)
+            var usage = rusage(pid: pid)
             let nsApp = nsAppsMap[pid]
 
             let path: String
@@ -218,7 +243,7 @@ class AppMonitorInteractor {
             if name.isEmpty && usage.memory == 0 { continue }
 
             // CPU
-            let task = taskInfo(pid: pid)
+            var task = taskInfo(pid: pid)
             let currentCpuTime = task.cpuTime
             newCpuTimeMap[pid] = currentCpuTime
             var cpu = 0.0
@@ -247,7 +272,24 @@ class AppMonitorInteractor {
                 diskWrite = Double(usage.diskWrite - last.write) / elapsed / 1024
             }
 
+            // GPU
+            let gpuTime = gpuTimeMap[pid] ?? 0
+            if gpuTime > 0 { newGPUTimeMap[pid] = gpuTime }
+            var gpu = 0.0
+            if let last = lastGPUTimeMap[pid], gpuTime >= last {
+                gpu = min(Double(gpuTime - last) / (elapsed * 1_000_000_000.0) * 100.0, 100.0)
+            }
+
             let handles = handleCount(pid: pid)
+
+            // proc_pid_rusage / proc_pidinfo bị từ chối với tiến trình của user khác
+            // (WindowServer, kernel_task...) nên rơi về `ps`, giống cách Stats làm.
+            // Lưu ý: %CPU của ps là trung bình suy giảm, không phải mẫu tức thời.
+            if usage.memory == 0, task.threads == 0, let fallback = psMap[pid] {
+                usage.memory = fallback.rssKB / 1024.0
+                cpu = min(fallback.cpu / coreCount, 100.0)
+            }
+
             totalThreads += task.threads
             totalHandles += handles
 
@@ -271,6 +313,7 @@ class AppMonitorInteractor {
                 netTxKBs: netTx,
                 diskReadKBs: diskRead,
                 diskWriteKBs: diskWrite,
+                gpu: gpu,
                 threads: task.threads,
                 handles: handles,
                 cpuTime: Double(currentCpuTime) * machNsRatio / 1_000_000_000.0,
@@ -284,6 +327,7 @@ class AppMonitorInteractor {
         lastCpuTimeMap = newCpuTimeMap
         lastNetTcpMap = newNetTcpMap
         lastDiskIOMap = newDiskIOMap
+        lastGPUTimeMap = newGPUTimeMap
         lastProcSampleTime = now
         pathCache = pathCache.filter { liveSet.contains($0.key) }
         userCache = userCache.filter { liveSet.contains($0.key) }
@@ -462,10 +506,12 @@ class AppMonitorInteractor {
         stats.memApp = UInt64(max(used - wired - compressed, 0))
         stats.memoryUsagePercentage = total > 0 ? used / total * 100.0 : 0
 
-        var pressure: Int32 = 0
-        var psize = MemoryLayout<Int32>.size
-        sysctlbyname("vm.memory_pressure", &pressure, &psize, nil, 0)
-        stats.memoryPressure = Int(pressure)
+        // `vm.memory_pressure` không tồn tại trên macOS hiện tại (luôn trả 0).
+        // Stats dùng khoá này: 1 = bình thường, 2 = cảnh báo, 4 = nguy cấp.
+        var pressure: Int = 0
+        var psize = MemoryLayout<UInt32>.size
+        sysctlbyname("kern.memorystatus_vm_pressure_level", &pressure, &psize, nil, 0)
+        stats.memoryPressure = pressure
 
         var swap = xsw_usage()
         var ssize = MemoryLayout<xsw_usage>.size
@@ -475,7 +521,8 @@ class AppMonitorInteractor {
         }
     }
 
-    private func systemNetworkBytes() -> (rx: UInt64, tx: UInt64) {
+    /// Byte của một interface; truyền rỗng thì cộng mọi interface (trừ loopback).
+    private func systemNetworkBytes(interface: String) -> (rx: UInt64, tx: UInt64) {
         var ifap: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifap) == 0, let first = ifap else { return (0, 0) }
         defer { freeifaddrs(first) }
@@ -484,7 +531,8 @@ class AppMonitorInteractor {
         var ptr = Optional(first)
         while let addr = ptr {
             let name = String(cString: addr.pointee.ifa_name)
-            if !name.hasPrefix("lo"),
+            let matches = interface.isEmpty ? !name.hasPrefix("lo") : name == interface
+            if matches,
                addr.pointee.ifa_addr?.pointee.sa_family == UInt8(AF_LINK),
                let data = addr.pointee.ifa_data?.assumingMemoryBound(to: if_data.self) {
                 rx += UInt64(data.pointee.ifi_ibytes)
@@ -519,6 +567,32 @@ class AppMonitorInteractor {
             drive = IOIteratorNext(iterator)
         }
         return (read, write, busy)
+    }
+
+    /// `ps -A -o pid=,pcpu=,rss=` — nguồn duy nhất lấy được CPU/RSS của tiến trình
+    /// thuộc user khác mà không cần quyền root (~20ms).
+    private func fetchPSData() -> [Int32: (cpu: Double, rssKB: Double)] {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/ps")
+        task.arguments = ["-A", "-o", "pid=,pcpu=,rss="]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        do { try task.run() } catch { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        guard let output = String(data: data, encoding: .utf8) else { return [:] }
+
+        var result: [Int32: (cpu: Double, rssKB: Double)] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count >= 3,
+                  let pid = Int32(parts[0]),
+                  let cpu = Double(parts[1]),
+                  let rss = Double(parts[2]) else { continue }
+            result[pid] = (cpu, rss)
+        }
+        return result
     }
 
     // MARK: - nettop

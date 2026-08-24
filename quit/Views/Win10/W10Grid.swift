@@ -69,15 +69,15 @@ struct W10Grid<Row: Identifiable>: View where Row.ID: Hashable {
 
     private var header: some View {
         HStack(spacing: 0) {
-            ForEach(Array(columns.enumerated()), id: \.element.id) { index, column in
-                headerCell(column, isLast: index == columns.count - 1)
+            ForEach(columns, id: \.id) { column in
+                headerCell(column)
             }
         }
         .frame(height: 44)
         .background(W10.content)
     }
 
-    private func headerCell(_ column: W10Column<Row>, isLast: Bool) -> some View {
+    private func headerCell(_ column: W10Column<Row>) -> some View {
         let sorted = sortKey == column.id
         return ZStack(alignment: .leading) {
             if let tint = W10.heat(column.topHeat) {
@@ -114,9 +114,6 @@ struct W10Grid<Row: Identifiable>: View where Row.ID: Hashable {
         .frame(width: column.width, height: 44)
         .frame(minWidth: column.width == nil ? column.minWidth : nil,
                maxWidth: column.width == nil ? .infinity : nil)
-        .overlay(alignment: .trailing) {
-            if !isLast { Rectangle().fill(W10.gridLine).frame(width: 1).padding(.vertical, 6) }
-        }
         .contentShape(Rectangle())
         .onTapGesture {
             guard column.sortable else { return }

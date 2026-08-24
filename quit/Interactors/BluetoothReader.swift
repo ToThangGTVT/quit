@@ -32,6 +32,15 @@ final class BluetoothReader {
             controller.transport = props["controller_transport"] as? String ?? "—"
             controller.vendor = props["controller_vendorID"] as? String ?? "—"
             controller.powered = (props["controller_state"] as? String) == "attrib_on"
+            if let raw = props["controller_supportedServices"] as? String {
+                // "0x392039 < HFP AVRCP A2DP HID ... >"
+                if let open = raw.firstIndex(of: "<"), let close = raw.lastIndex(of: ">") {
+                    controller.services = String(raw[raw.index(after: open)..<close])
+                        .trimmingCharacters(in: .whitespaces)
+                } else {
+                    controller.services = raw
+                }
+            }
         }
 
         devices += Self.parse(entry["device_connected"], connected: true)

@@ -26,7 +26,7 @@ struct PerformanceTab: View {
     private let hw = HardwareInfo.current
 
     /// Dưới ngưỡng này thì ẩn cột thông tin phần cứng bên phải và để khối số liệu xuống dòng.
-    private static let infoColumnThreshold: CGFloat = 620
+    private static let infoColumnThreshold: CGFloat = 650
     private static let sidebarWidth: CGFloat = 196
     private static let narrowSidebarWidth: CGFloat = 150
 
@@ -409,14 +409,20 @@ struct PerformanceTab: View {
                      (L.t("Luồng", "Threads"), "\(stats.threadCount)"),
                      (L.t("Bộ mô tả", "Handles"), "\(stats.handleCount)"),
                      (L.t("Thời gian hoạt động", "Up time"), stats.uptimeText)],
-                    [(L.t("Tốc độ cơ bản:", "Base speed:"), hw.baseSpeedText),
+                    [(L.t("Tốc độ tối đa (P):", "Max speed (P):"), hw.baseSpeedText),
+                     (L.t("Tốc độ tối đa (E):", "Max speed (E):"), hw.efficiencySpeedText),
                      (L.t("Số lõi:", "Cores:"), "\(hw.physicalCores)"),
                      (L.t("Lõi P / E:", "P / E cores:"), "\(hw.performanceCores) / \(hw.efficiencyCores)"),
                      (L.t("Bộ xử lý logic:", "Logical processors:"), "\(hw.logicalCores)"),
                      (L.t("Kiến trúc:", "Architecture:"), hw.isAppleSilicon ? "arm64" : "x86_64"),
                      (L.t("Bộ đệm L1:", "L1 cache:"), Fmt.bytesAuto(hw.l1)),
-                     (L.t("Bộ đệm L2:", "L2 cache:"), Fmt.bytesAuto(hw.l2)),
-                     (L.t("Bộ đệm L3:", "L3 cache:"), hw.l3 > 0 ? Fmt.bytesAuto(hw.l3) : "—")])
+                     (L.t("Bộ đệm L2 (P/E):", "L2 cache (P/E):"),
+                      "\(Fmt.bytesAuto(hw.l2Performance)) / \(Fmt.bytesAuto(hw.l2Efficiency))"),
+                     (L.t("Bộ đệm L3:", "L3 cache:"), hw.l3 > 0 ? Fmt.bytesAuto(hw.l3) : "—"),
+                     (L.t("Dòng đệm:", "Cache line:"), "\(hw.cacheLineSize) B"),
+                     (L.t("Kiểu máy:", "Model:"), hw.machineModel),
+                     (L.t("Bảng mạch:", "Board:"), hw.targetType),
+                     (L.t("Hệ điều hành:", "OS:"), hw.osVersion)])
         case .memory:
             return (L.t("Bộ nhớ", "Memory"), Fmt.gb(stats.memTotal),
                     [(L.t("Đang dùng (đã nén)", "In use (compressed)"), "\(Fmt.gb(stats.memUsed)) (\(Fmt.mb(stats.memCompressed)))"),
@@ -427,26 +433,46 @@ struct PerformanceTab: View {
                     [(L.t("Tổng dung lượng:", "Total capacity:"), Fmt.gb(hw.memTotal)),
                      (L.t("Áp lực bộ nhớ:", "Memory pressure:"), stats.pressureText),
                      (L.t("Đã dùng:", "Used:"), String(format: "%.0f%%", stats.memoryUsagePercentage)),
-                     (L.t("Kiểu máy:", "Model:"), hw.machineModel)])
+                     (L.t("Kích thước trang:", "Page size:"), "\(hw.pageSize / 1024) KB"),
+                     (L.t("Swap tổng:", "Swap total:"), Fmt.gb(stats.swapTotal)),
+                     (L.t("Kiểu máy:", "Model:"), hw.machineModel),
+                     (L.t("Hệ điều hành:", "OS:"), hw.osVersion)])
         case .disk:
             return (L.t("Đĩa 0 (\(hw.diskName))", "Disk 0 (\(hw.diskName))"), hw.isAppleSilicon ? "SSD" : L.t("Ổ cứng", "Hard drive"),
-                    [(L.t("Thời gian hoạt động", "Up time"), String(format: "%.0f%%", stats.diskActive)),
+                    [(L.t("Thời gian hoạt động", "Active time"), String(format: "%.0f%%", stats.diskActive)),
                      (L.t("Tốc độ đọc", "Read speed"), Fmt.rate(stats.diskReadKBs)),
                      (L.t("Tốc độ ghi", "Write speed"), Fmt.rate(stats.diskWriteKBs))],
-                    [(L.t("Dung lượng:", "Capacity:"), Fmt.gb(hw.diskCapacity)),
+                    [(L.t("Model:", "Model:"), hw.diskModel),
+                     (L.t("Loại:", "Type:"), hw.diskMedium),
+                     (L.t("Firmware:", "Firmware:"), hw.diskRevision),
+                     (L.t("Dung lượng:", "Capacity:"), Fmt.gb(hw.diskCapacity)),
+                     (L.t("Còn trống:", "Free:"), Fmt.gb(stats.diskFree)),
+                     (L.t("Đã dùng:", "Used:"), stats.diskTotal > 0
+                        ? String(format: "%.0f%%", Double(stats.diskTotal - stats.diskFree) / Double(stats.diskTotal) * 100)
+                        : "—"),
                      (L.t("Đã định dạng:", "Formatted:"), hw.diskName),
-                     (L.t("Đĩa hệ thống:", "System disk:"), L.t("Có", "Yes")),
-                     (L.t("Loại:", "Type:"), hw.isAppleSilicon ? "SSD (NVMe)" : "SSD/HDD")])
+                     (L.t("Đĩa hệ thống:", "System disk:"), L.t("Có", "Yes"))])
         case .gpu:
             return ("GPU", hw.gpuName,
                     [(L.t("Mức sử dụng", "Utilization"), String(format: "%.0f%%", stats.gpu.utilization)),
                      ("Renderer", String(format: "%.0f%%", stats.gpu.renderer)),
                      ("Tiler", String(format: "%.0f%%", stats.gpu.tiler)),
                      (L.t("Bộ nhớ đang dùng", "Memory in use"), Fmt.bytesAuto(stats.gpu.inUseMemory)),
-                     (L.t("Đã cấp phát", "Allocated"), Fmt.bytesAuto(stats.gpu.allocatedMemory))],
+                     (L.t("Đã cấp phát", "Allocated"), Fmt.bytesAuto(stats.gpu.allocatedMemory)),
+                     (L.t("Nhiệt độ", "Temperature"),
+                      stats.gpu.temperature.map { String(format: "%.0f°C", $0) } ?? "—"),
+                     (L.t("Xung nhân", "Core clock"),
+                      stats.gpu.coreClock.map { "\($0) MHz" } ?? "—")],
                     [(L.t("Tên GPU:", "GPU name:"), hw.gpuName),
                      (L.t("Số nhân GPU:", "GPU cores:"), hw.gpuCores > 0 ? "\(hw.gpuCores)" : "—"),
-                     (L.t("Bộ nhớ:", "Memory:"), hw.isAppleSilicon ? L.t("Dùng chung với RAM", "Shared with RAM") : L.t("Riêng", "Dedicated")),
+                     ("IOClass:", stats.gpu.ioClass.isEmpty ? "—" : stats.gpu.ioClass),
+                     (L.t("Nguồn:", "Power:"), stats.gpu.poweredOn ? L.t("Bật", "On") : L.t("Tắt", "Off")),
+                     (L.t("Bộ nhớ:", "Memory:"), hw.metalUnifiedMemory
+                        ? L.t("Dùng chung với RAM", "Shared with RAM")
+                        : L.t("Riêng", "Dedicated")),
+                     (L.t("Ngân sách GPU:", "GPU budget:"), Fmt.bytesAuto(hw.metalWorkingSet)),
+                     (L.t("Buffer tối đa:", "Max buffer:"), Fmt.bytesAuto(hw.metalMaxBuffer)),
+                     ("Ray tracing:", hw.metalRaytracing ? L.t("Có", "Yes") : L.t("Không", "No")),
                      (L.t("Tổng RAM:", "Total RAM:"), Fmt.gb(hw.memTotal))])
         case .bluetooth:
             let connected = presenter.bluetoothDevices.filter { $0.connected }.count
@@ -459,17 +485,27 @@ struct PerformanceTab: View {
                      ("Chipset:", controller.chipset),
                      ("Firmware:", controller.firmware),
                      (L.t("Kết nối:", "Transport:"), controller.transport),
-                     (L.t("Nhà sản xuất:", "Vendor:"), controller.vendor)])
+                     (L.t("Nhà sản xuất:", "Vendor:"), controller.vendor),
+                     (L.t("Dịch vụ:", "Services:"), controller.services)])
         case .network:
             return (adapter.displayName, adapter.bsdName.isEmpty ? "—" : adapter.bsdName,
                     [(L.t("Gửi", "Send"), Fmt.bitrate(stats.netTxKBs)),
                      (L.t("Nhận", "Receive"), Fmt.bitrate(stats.netRxKBs)),
                      (L.t("Tổng tải lên", "Total upload"), Fmt.bytesAuto(stats.netTotalTx)),
-                     (L.t("Tổng tải xuống", "Total download"), Fmt.bytesAuto(stats.netTotalRx))],
+                     (L.t("Tổng tải xuống", "Total download"), Fmt.bytesAuto(stats.netTotalRx)),
+                     (L.t("Gói nhận/gửi", "Packets in/out"),
+                      "\(adapter.packetsIn) / \(adapter.packetsOut)"),
+                     (L.t("Lỗi nhận/gửi", "Errors in/out"),
+                      "\(adapter.errorsIn) / \(adapter.errorsOut)")],
                     [(L.t("Tên bộ điều hợp:", "Adapter name:"), adapter.displayName),
-                     (L.t("Loại kết nối:", "Connection type:"), adapter.bsdName.hasPrefix("en") ? "Ethernet/Wi-Fi" : adapter.bsdName),
+                     (L.t("Trạng thái:", "Status:"), adapter.isUp ? L.t("Hoạt động", "Up") : L.t("Ngắt", "Down")),
+                     (L.t("Tốc độ link:", "Link speed:"), adapter.linkSpeedText),
+                     ("MTU:", adapter.mtu > 0 ? "\(adapter.mtu)" : "—"),
+                     (L.t("Địa chỉ MAC:", "MAC address:"), adapter.mac),
                      (L.t("Địa chỉ IPv4:", "IPv4 address:"), adapter.ipv4),
-                     (L.t("Địa chỉ IPv6:", "IPv6 address:"), adapter.ipv6)])
+                     (L.t("Địa chỉ IPv6:", "IPv6 address:"), adapter.ipv6),
+                     (L.t("Bộ định tuyến:", "Router:"), adapter.router),
+                     ("DNS:", adapter.dns)])
         }
     }
 
@@ -492,7 +528,7 @@ struct PerformanceTab: View {
                         infoRow(item.0, item.1)
                     }
                 }
-                .frame(width: 210)
+                .frame(width: 240)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -514,18 +550,18 @@ struct PerformanceTab: View {
 
     private func stat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(label).font(W10.font(11)).foregroundColor(W10.textDim).lineLimit(1)
-            Text(value).font(W10.font(19, .light)).foregroundColor(W10.text).lineLimit(1)
+            Text(label).font(W10.font(12)).foregroundColor(W10.textDim).lineLimit(1)
+            Text(value).font(W10.font(20, .light)).foregroundColor(W10.text).lineLimit(1)
         }
         .fixedSize()
     }
 
     private func infoRow(_ label: String, _ value: String) -> some View {
         HStack(spacing: 8) {
-            Text(label).font(W10.font(11)).foregroundColor(W10.textDim).lineLimit(1)
+            Text(label).font(W10.font(12)).foregroundColor(W10.textDim).lineLimit(1)
             Spacer(minLength: 4)
             Text(value)
-                .font(W10.font(11))
+                .font(W10.font(12))
                 .foregroundColor(W10.text)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -537,7 +573,7 @@ struct PerformanceTab: View {
             Rectangle().fill(color)
                 .frame(width: 9, height: 9)
                 .overlay(Rectangle().stroke(W10.memLine.opacity(0.7), lineWidth: 0.5))
-            Text(label).font(W10.font(10)).foregroundColor(W10.textDim).lineLimit(1)
+            Text(label).font(W10.font(11)).foregroundColor(W10.textDim).lineLimit(1)
         }
         .fixedSize()
     }

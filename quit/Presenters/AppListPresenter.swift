@@ -2,7 +2,7 @@ import SwiftUI
 import Observation
 
 enum ProcSortKey: String {
-    case name, status, cpu, memory, disk, network, pid, user, threads, handles, cpuTime, netTotal
+    case name, status, cpu, memory, disk, network, gpu, pid, user, threads, handles, cpuTime, netTotal
 }
 
 /// Cây tiến trình: mỗi ứng dụng là một hàng cha cộng gộp, các tiến trình con
@@ -56,7 +56,13 @@ class AppListPresenter: AppMonitorInteractorOutput {
     // MARK: - Truy vấn
 
     var appEntities: [AppEntity] { rawEntities.sorted(using: sortOrder) }
-    var guiAppEntities: [AppEntity] { appEntities.filter { $0.isGUIApp } }
+    /// Ứng dụng người dùng đang mở: đúng nhóm "Ứng dụng" của tab Tiến trình —
+    /// chỉ app có giao diện (`activationPolicy == .regular`) và đã cộng gộp tiến
+    /// trình con, nên số liệu khớp với cửa sổ Task Manager.
+    var openApps: [AppEntity] {
+        tree.roots.sorted { $0.memory > $1.memory }
+    }
+
 
     func entities(in category: ProcessCategory) -> [AppEntity] {
         rawEntities.filter { $0.category == category }
@@ -207,6 +213,7 @@ class AppListPresenter: AppMonitorInteractorOutput {
             netTxKBs: group.reduce(0) { $0 + $1.netTxKBs },
             diskReadKBs: group.reduce(0) { $0 + $1.diskReadKBs },
             diskWriteKBs: group.reduce(0) { $0 + $1.diskWriteKBs },
+            gpu: min(group.reduce(0) { $0 + $1.gpu }, 100),
             threads: group.reduce(0) { $0 + $1.threads },
             handles: group.reduce(0) { $0 + $1.handles },
             cpuTime: group.reduce(0) { $0 + $1.cpuTime },
@@ -257,6 +264,7 @@ extension AppEntity {
         case .memory:   sorted = list.sorted { $0.memory < $1.memory }
         case .disk:     sorted = list.sorted { $0.diskKBs < $1.diskKBs }
         case .network:  sorted = list.sorted { $0.netMbps < $1.netMbps }
+        case .gpu:      sorted = list.sorted { $0.gpu < $1.gpu }
         case .pid:      sorted = list.sorted { $0.id < $1.id }
         case .user:     sorted = list.sorted { ($0.user, $0.name) < ($1.user, $1.name) }
         case .threads:  sorted = list.sorted { $0.threads < $1.threads }

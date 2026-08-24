@@ -81,15 +81,15 @@ struct W10GraphPanel<Content: View>: View {
     var body: some View {
         VStack(spacing: 2) {
             HStack {
-                Text(title).font(W10.font(11)).foregroundColor(W10.textDim)
+                Text(title).font(W10.font(12)).foregroundColor(W10.textDim)
                 Spacer()
-                Text(topRight).font(W10.font(11)).foregroundColor(W10.textDim)
+                Text(topRight).font(W10.font(12)).foregroundColor(W10.textDim)
             }
             content()
             HStack {
-                Text(bottomLeft).font(W10.font(11)).foregroundColor(W10.textDim)
+                Text(bottomLeft).font(W10.font(12)).foregroundColor(W10.textDim)
                 Spacer()
-                Text(bottomRight).font(W10.font(11)).foregroundColor(W10.textDim)
+                Text(bottomRight).font(W10.font(12)).foregroundColor(W10.textDim)
             }
         }
     }

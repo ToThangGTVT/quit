@@ -65,6 +65,14 @@ struct ProcessesTab: View {
                 text: { Fmt.diskCell($0.diskKBs) }
             ),
             W10Column(
+                id: "gpu", title: "GPU",
+                top: String(format: "%.0f%%", stats.gpu.utilization),
+                topHeat: stats.gpu.utilization / 100,
+                width: 64,
+                heat: { W10.cpuHeat($0.gpu) },
+                text: { Self.percent($0.gpu) }
+            ),
+            W10Column(
                 id: "network", title: L.t("Mạng", "Network"),
                 top: String(format: "%.0f%%", netPercent * 100),
                 topHeat: netPercent,

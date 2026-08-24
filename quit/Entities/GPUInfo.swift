@@ -3,10 +3,18 @@ import Foundation
 /// Số liệu GPU đọc từ IOAccelerator (cùng nguồn mà Stats dùng).
 struct GPUInfo {
     var name: String = "GPU"
+    var ioClass: String = ""
     var coreCount: Int = 0
-    var utilization: Double = 0        // Device Utilization %
+    /// Đúng khoá Stats dùng: `Device Utilization %` (dự phòng `GPU Activity(%)`).
+    /// KHÔNG lấy max với renderer/tiler — đó là ba chỉ số riêng.
+    var utilization: Double = 0
     var renderer: Double = 0           // Renderer Utilization %
     var tiler: Double = 0              // Tiler Utilization %
+    var temperature: Double?           // Temperature(C)
+    var fanSpeed: Int?                 // Fan Speed(%)
+    var coreClock: Int?                // Core Clock(MHz)
+    var memoryClock: Int?              // Memory Clock(MHz)
+    var poweredOn: Bool = true         // AGCInfo.poweredOffByAGC
     var inUseMemory: UInt64 = 0        // In use system memory
     var allocatedMemory: UInt64 = 0    // Alloc system memory
 }
@@ -40,4 +48,5 @@ struct BluetoothController {
     var transport: String = "—"
     var vendor: String = "—"
     var powered: Bool = false
+    var services: String = "—"
 }

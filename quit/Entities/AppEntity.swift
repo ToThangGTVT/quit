@@ -27,6 +27,7 @@ struct AppEntity: Identifiable {
     let netTxKBs: Double      // KB/s
     let diskReadKBs: Double   // KB/s
     let diskWriteKBs: Double  // KB/s
+    let gpu: Double           // % thời gian GPU
     let threads: Int
     let handles: Int
     let cpuTime: Double       // giây, tích lũy từ lúc tiến trình chạy

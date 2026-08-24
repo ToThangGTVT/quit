@@ -34,6 +34,8 @@ struct SystemStats {
     var diskReadKBs: Double = 0
     var diskWriteKBs: Double = 0
     var diskActive: Double = 0          // % thời gian hoạt động
+    var diskFree: UInt64 = 0
+    var diskTotal: UInt64 = 0
 
     // Đếm
     var processCount: Int = 0

@@ -73,15 +73,22 @@ GPL-3, repo này MIT nên không chép mã):
 
 | Chỉ số | API |
 |---|---|
-| CPU tổng / kernel | `host_statistics(HOST_CPU_LOAD_INFO)`, tách `cpu_ticks.system` |
+| CPU tổng / kernel | `host_statistics(HOST_CPU_LOAD_INFO)`; tổng = (user+system)/tổng tick — **nice nằm trong tổng tick nhưng không cộng vào mức sử dụng** (giống Stats); per-core thì có cộng nice |
 | CPU từng lõi | `host_processor_info(PROCESSOR_CPU_LOAD_INFO)` |
 | Cụm P/E | `IODeviceTree:/cpus` → `cluster-type` theo đúng thứ tự lõi logic; hiển thị nhãn "CPU n" + huy hiệu P/E dưới mỗi ô lõi |
 | RAM | `host_statistics64(HOST_VM_INFO64)`, used = active+inactive+speculative+wired+compressed−purgeable−external (bằng Activity Monitor) |
+| Áp lực bộ nhớ | `sysctl kern.memorystatus_vm_pressure_level` (1 bình thường / 2 cảnh báo / 4 nguy cấp). **Không dùng `vm.memory_pressure`** — khoá đó luôn trả 0 trên macOS hiện tại |
 | Swap | `sysctl vm.swapusage` |
-| GPU | IORegistry lớp `IOAccelerator` → `PerformanceStatistics` (Device/Renderer/Tiler %, In use/Alloc system memory), `gpu-core-count` |
+| GPU | IORegistry lớp `IOAccelerator` → `PerformanceStatistics`. **Mức sử dụng = đúng khoá `Device Utilization %`** (dự phòng `GPU Activity(%)`), KHÔNG lấy max với Renderer/Tiler — đó là ba chỉ số riêng |
+| GPU theo tiến trình | Con của `IOAccelerator`: `IOUserClientCreator` ("pid 170, WindowServer") + `AppUsage[].accumulatedGPUTime` (nanosecond) → lấy delta chia thời gian. Không cần root, khác `powermetrics --show-process-gpu` (bắt buộc sudo) |
 | Đĩa | IORegistry `IOBlockStorageDriver` → `Statistics` |
-| Mạng | `getifaddrs` + `SCDynamicStore` + `nettop` cho từng tiến trình |
+| Mạng | `getifaddrs` **chỉ trên interface chính** (`SCDynamicStore` PrimaryInterface) — cộng hết mọi interface sẽ đếm trùng khi có VPN/utun; chặn cú nhảy khi bộ đếm reset. `nettop` cho từng tiến trình |
 | Bluetooth | `system_profiler SPBluetoothDataType -json` |
+| Tần số lõi | `IODeviceTree:/arm-io/pmgr` → `voltage-states5-sram` (cụm P) / `voltage-states1-sram` (cụm E), lấy giá trị lớn nhất |
+| GPU (tĩnh) | `MTLCreateSystemDefaultDevice()`: tên, unified memory, `recommendedMaxWorkingSetSize`, `maxBufferLength`, ray tracing |
+| Model đĩa | IORegistry `IOBlockStorageDevice` → `Device Characteristics` (Product Name / Medium Type / Revision), bỏ qua disk image và khe thẻ |
+| Dung lượng trống | `statfs("/")` |
+| Link mạng | bản ghi `AF_LINK`: `ifi_baudrate` (tốc độ link), `ifi_mtu`, gói/lỗi; MAC từ `sockaddr_dl`; router + DNS từ `SCDynamicStore` |
 
 ⚠️ Không gọi thẳng `IOBluetooth.pairedDevices()`: trên macOS hiện tại nó chạm TCC và **crash**
 tiến trình nếu Info.plist chưa khai báo quyền Bluetooth.
@@ -146,7 +153,13 @@ toolbar (`TaskManagerToolbar.refreshLabels`) phải gán lại qua `withObservat
 - Hardened Runtime is enabled; code signing uses automatic with team `J299H8YWF8`.
 - Gộp nhóm tiến trình đi theo quan hệ **ppid**: `AppListPresenter.buildTree` gom toàn bộ
   con cháu của mỗi ứng dụng GUI vào hàng cha (RAM/CPU/đĩa/mạng/luồng đều cộng gộp).
-- Tiến trình của user khác (root...) trả về 0 MB / 0 luồng vì `proc_pid_rusage` bị chặn
-  khi không chạy quyền root — đây là giới hạn của macOS, không phải lỗi.
+- `proc_pid_rusage` / `proc_pidinfo` bị chặn với tiến trình của user khác (WindowServer,
+  kernel_task, các daemon root) → trả 0. Đã vá bằng `ps -A -o pid=,pcpu=,rss=` (~20ms, là
+  cách duy nhất lấy được số của tiến trình user khác mà không cần root, cũng là cách Stats
+  làm). Chỉ dùng làm dự phòng: %CPU của `ps` là trung bình suy giảm, còn RSS thì nhỏ hơn
+  `phys_footprint` mà Activity Monitor hiển thị.
+- **Chuẩn hoá CPU theo tiến trình**: app chia cho số lõi (100% = toàn máy, đúng kiểu Windows
+  Task Manager). `top`/`ps`/Activity Monitor/Stats thì chuẩn hoá theo lõi (100% = 1 lõi) nên
+  số của họ lớn hơn đúng `số lõi` lần. Đây là khác biệt cố ý, không phải lỗi.
 - `nettop` được spawn mỗi nhịp quét tiến trình; đó là phần tốn CPU nhất của app, nên
   `UpdateSpeed` mặc định là 2 giây.
