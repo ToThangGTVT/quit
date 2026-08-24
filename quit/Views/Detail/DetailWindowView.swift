@@ -1,148 +1,256 @@
 import SwiftUI
 
+/// Cửa sổ chính: khung macOS (menu bar hệ thống + thanh tab segmented trong titlebar),
+/// nội dung từng tab giữ nguyên giao diện Task Manager của Windows 10.
 struct DetailWindowView: View {
     @Bindable var presenter: AppListPresenter
     @Bindable var router: AppRouter
+    @Bindable var state: TaskManagerState
 
-    @State private var selection = Set<Int32>()
+    @State private var procSort = ProcSortKey.memory.rawValue
+    @State private var procAscending = false
 
-    private var appsRows: [AppEntity]       { presenter.appEntities.filter { $0.isRegular } }
-    private var backgroundRows: [AppEntity] { presenter.appEntities.filter { $0.isGUIApp && !$0.isRegular } }
-    private var processRows: [AppEntity]    { presenter.appEntities.filter { !$0.isGUIApp } }
+    @State private var detailsSort = ProcSortKey.name.rawValue
+    @State private var detailsAscending = true
 
-    private static func formatNet(_ kbs: Double) -> String {
-        kbs >= 1024
-            ? String(format: "%.1f MB/s", kbs / 1024)
-            : String(format: "%.0f KB/s", kbs)
-    }
+    @State private var usersSort = ProcSortKey.cpu.rawValue
+    @State private var usersAscending = false
+
+    @State private var historySort = "cpuTime"
+    @State private var historyAscending = false
+
+    @State private var startupSort = "name"
+    @State private var startupAscending = true
+
+    @State private var servicesSort = "name"
+    @State private var servicesAscending = true
+
+    @State private var startupItems: [StartupItem] = []
+    @State private var services: [ServiceItem] = []
+
+    private let startupInteractor = StartupInteractor()
 
     var body: some View {
+        Group {
+            if router.isCompact {
+                compactBody
+            } else {
+                fullBody
+            }
+        }
+        .background(W10.content)
+        .environment(\.colorScheme, .light)
+        .onAppear { loadTabData() }
+        .onChange(of: state.tab) { loadTabData() }
+    }
+
+    // MARK: - Toàn phần
+
+    private var fullBody: some View {
         VStack(spacing: 0) {
-            toolbar
-            Divider()
-            Table(selection: $selection, sortOrder: $presenter.sortOrder) {
-                TableColumn("Tên", value: \AppEntity.name) { entity in
-                    HStack(spacing: 6) {
-                        if let icon = entity.icon {
-                            Image(nsImage: icon).resizable().frame(width: 16, height: 16)
-                        } else {
-                            Image(systemName: "gearshape.fill")
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(.secondary)
-                        }
-                        Text(entity.name).lineLimit(1)
-                    }
-                }
-                TableColumn("PID") { entity in
-                    Text("\(entity.id)")
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .foregroundColor(.secondary)
-                }
-                .width(50)
-                TableColumn("CPU", value: \AppEntity.cpu) { entity in
-                    Text(String(format: "%.1f%%", entity.cpu))
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .foregroundColor(entity.cpu > 50 ? .red : entity.cpu > 15 ? .orange : .primary)
-                }
-                .width(65)
-                TableColumn("RAM", value: \AppEntity.memory) { entity in
-                    Text(entity.memory >= 1024
-                         ? String(format: "%.1f GB", entity.memory / 1024)
-                         : String(format: "%.0f MB", entity.memory))
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .width(80)
-                TableColumn("↓ Mạng", value: \AppEntity.netRxKBs) { entity in
-                    Text(entity.netRxKBs > 0
-                         ? Self.formatNet(entity.netRxKBs)
-                         : "-")
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .foregroundColor(entity.netRxKBs > 100 ? .blue : .primary)
-                }
-                .width(75)
-                TableColumn("↑ Mạng", value: \AppEntity.netTxKBs) { entity in
-                    Text(entity.netTxKBs > 0
-                         ? Self.formatNet(entity.netTxKBs)
-                         : "-")
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .foregroundColor(entity.netTxKBs > 100 ? .orange : .primary)
-                }
-                .width(75)
-            } rows: {
-                Section("Ứng dụng (\(appsRows.count))") {
-                    ForEach(appsRows) { TableRow($0) }
-                }
-                Section("Nền (\(backgroundRows.count))") {
-                    ForEach(backgroundRows) { TableRow($0) }
-                }
-                Section("Tiến trình (\(processRows.count))") {
-                    ForEach(processRows) { TableRow($0) }
-                }
-            }
-            Divider()
-            footer
+            contentHeader
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            W10Footer(compactTitle: L.t("Ít chi tiết hơn", "Fewer details"),
+                      compactSymbol: "chevron.up",
+                      onCompact: { router.setCompact(true) },
+                      actionTitle: footerTitle,
+                      actionEnabled: footerEnabled,
+                      action: footerAction)
         }
-        .frame(minWidth: 680, minHeight: 480)
+        .frame(minWidth: 780, minHeight: 520)
     }
 
-    private var toolbar: some View {
+    /// Toolbar chỉ còn icon nên tên tab hiện ngay đầu vùng nội dung,
+    /// kèm thông tin phụ của từng tab ở bên phải.
+    private var contentHeader: some View {
         HStack(spacing: 12) {
-            Toggle("Luôn trên đầu", isOn: $router.isAlwaysOnTop)
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-            Spacer()
-            let totalRAM = presenter.appEntities.reduce(0) { $0 + $1.memory }
-            let totalCPU = presenter.appEntities.reduce(0) { $0 + $1.cpu }
-            HStack(spacing: 16) {
-                Label(String(format: "CPU %.0f%%", min(totalCPU, 100)), systemImage: "cpu")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                Label(String(format: "RAM %.0f MB", totalRAM), systemImage: "memorychip")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                Label("↓ \(Self.formatNet(presenter.systemStats.netRxKBs))  ↑ \(Self.formatNet(presenter.systemStats.netTxKBs))", systemImage: "network")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
+            Text(state.tab.title)
+                .font(W10.font(15, .semibold))
+                .foregroundColor(W10.text)
+            Spacer(minLength: 8)
+            if let trailing = headerTrailing {
+                Text(trailing)
+                    .font(W10.font(11))
+                    .foregroundColor(W10.textDim)
+                    .lineLimit(1)
             }
-            Button(action: { presenter.refresh() }) {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.bar)
+        .frame(height: 34)
+        .background(W10.content)
+        .overlay(alignment: .bottom) { Rectangle().fill(W10.gridLine).frame(height: 1) }
     }
 
-    private var footer: some View {
-        HStack {
-            let regular = appsRows.count
-            let bg = backgroundRows.count
-            let procs = processRows.count
-            Text("\(regular) ứng dụng · \(bg) nền · \(procs) tiến trình")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-            Spacer()
-            Button("Buộc thoát") { forceQuitSelected() }
-                .disabled(selection.isEmpty)
-                .controlSize(.small)
+    private var headerTrailing: String? {
+        switch state.tab {
+        case .processes:
+            let count = presenter.rawEntities.count
+            return L.t("\(count) tiến trình đang chạy", "\(count) processes running")
+        case .appHistory:
+            let since = Self.bootText(withSeconds: false)
+            return L.t("Mức sử dụng tài nguyên từ \(since)", "Resource usage since \(since)")
+        case .startup:
+            let boot = Self.bootText(withSeconds: true)
+            return L.t("Thời gian khởi động lần cuối: \(boot)", "Last boot time: \(boot)")
+        case .users:
+            return NSFullUserName()
+        case .services:
+            guard !services.isEmpty else { return nil }
+            return L.t("\(services.count) dịch vụ", "\(services.count) services")
+        case .details, .performance:
+            return nil
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.bar)
     }
 
-    private func forceQuitSelected() {
-        for pid in selection {
-            if let entity = presenter.appEntities.first(where: { $0.id == pid }) {
+    private static func bootText(withSeconds: Bool) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = withSeconds ? "dd/MM/yyyy HH:mm:ss" : "dd/MM/yyyy HH:mm"
+        return formatter.string(from: HardwareInfo.current.bootTime)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state.tab {
+        case .processes:
+            ProcessesTab(presenter: presenter,
+                         selection: $state.procSelection,
+                         sortKey: $procSort,
+                         ascending: $procAscending,
+                         collapsed: $state.collapsedGroups,
+                         onShowDetails: { pid in
+                             state.detailsSelection = [pid]
+                             state.tab = .details
+                         })
+        case .performance:
+            PerformanceTab(presenter: presenter, state: state)
+        case .appHistory:
+            AppHistoryTab(presenter: presenter,
+                          sortKey: $historySort,
+                          ascending: $historyAscending)
+        case .startup:
+            StartupTab(selection: $state.startupSelection,
+                       sortKey: $startupSort,
+                       ascending: $startupAscending,
+                       items: startupItems)
+        case .users:
+            UsersTab(presenter: presenter,
+                     selection: $state.usersSelection,
+                     sortKey: $usersSort,
+                     ascending: $usersAscending)
+        case .details:
+            DetailsTab(presenter: presenter,
+                       selection: $state.detailsSelection,
+                       sortKey: $detailsSort,
+                       ascending: $detailsAscending)
+        case .services:
+            ServicesTab(selection: $state.servicesSelection,
+                        sortKey: $servicesSort,
+                        ascending: $servicesAscending,
+                        items: services)
+        }
+    }
+
+    // MARK: - Chân cửa sổ
+
+    private var footerTitle: String {
+        switch state.tab {
+        case .processes, .details, .users: return L.t("Kết thúc tác vụ", "End task")
+        case .appHistory:                  return L.t("Xóa lịch sử sử dụng", "Delete usage history")
+        case .startup:                     return L.t("Mở vị trí tệp", "Open file location")
+        case .services:                    return L.t("Tải lại danh sách", "Reload list")
+        case .performance:                 return L.t("Làm mới ngay", "Refresh now")
+        }
+    }
+
+    private var footerEnabled: Bool {
+        switch state.tab {
+        case .processes: return !state.procSelection.isEmpty
+        case .details:   return !state.detailsSelection.isEmpty
+        case .users:     return !state.usersSelection.isEmpty
+        case .startup:   return !state.startupSelection.isEmpty
+        default:         return true
+        }
+    }
+
+    private func footerAction() {
+        switch state.tab {
+        case .processes: endTasks(state.procSelection); state.procSelection.removeAll()
+        case .details:   endTasks(state.detailsSelection); state.detailsSelection.removeAll()
+        case .users:     endTasks(state.usersSelection); state.usersSelection.removeAll()
+        case .appHistory: presenter.clearUsageHistory()
+        case .startup:
+            if let id = state.startupSelection.first,
+               let item = startupItems.first(where: { $0.id == id }) {
+                NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
+            }
+        case .services:  loadServices()
+        case .performance: presenter.refresh()
+        }
+    }
+
+    private func endTasks(_ pids: Set<Int32>) {
+        for pid in pids {
+            if let entity = presenter.rawEntities.first(where: { $0.id == pid }) {
                 presenter.forceQuit(entity)
             }
         }
-        selection.removeAll()
+    }
+
+    // MARK: - Chế độ gọn
+
+    private var compactBody: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(presenter.entities(in: .app)
+                        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { entity in
+                        HStack(spacing: 6) {
+                            if let icon = entity.icon {
+                                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                            }
+                            Text(entity.name).font(W10.font())
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 24)
+                        .background(state.procSelection.contains(entity.id) ? W10.selection : Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture { state.procSelection = [entity.id] }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .background(W10.content)
+            W10Footer(compactTitle: L.t("Thêm chi tiết", "More details"),
+                      compactSymbol: "chevron.down",
+                      onCompact: { router.setCompact(false) },
+                      actionTitle: L.t("Kết thúc tác vụ", "End task"),
+                      actionEnabled: !state.procSelection.isEmpty,
+                      action: { endTasks(state.procSelection); state.procSelection.removeAll() })
+        }
+    }
+
+    // MARK: - Nạp dữ liệu theo tab
+
+    private func loadTabData() {
+        switch state.tab {
+        case .startup where startupItems.isEmpty:
+            DispatchQueue.global(qos: .userInitiated).async {
+                let items = startupInteractor.loadStartupItems()
+                DispatchQueue.main.async { startupItems = items }
+            }
+        case .services where services.isEmpty:
+            loadServices()
+        default:
+            break
+        }
+    }
+
+    private func loadServices() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let items = startupInteractor.loadServices()
+            DispatchQueue.main.async { services = items }
+        }
     }
 }
