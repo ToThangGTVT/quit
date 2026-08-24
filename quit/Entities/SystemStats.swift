@@ -30,6 +30,9 @@ struct SystemStats {
     // GPU
     var gpu = GPUInfo()
 
+    // Cảm biến (nhiệt độ, quạt)
+    var sensors = SensorsInfo()
+
     // Đĩa
     var diskReadKBs: Double = 0
     var diskWriteKBs: Double = 0

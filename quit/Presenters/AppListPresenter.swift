@@ -31,6 +31,7 @@ class AppListPresenter: AppMonitorInteractorOutput {
     private(set) var cpuKernelHistory: [Double] = [] // 0...1
     private(set) var perCoreHistory: [[Double]] = [] // mỗi lõi một mảng 0...1
     private(set) var gpuHistory: [Double] = []       // 0...1
+    private(set) var tempHistory: [Double] = []      // nhiệt độ CPU / 110°C
 
     private(set) var bluetoothController = BluetoothController()
     private(set) var bluetoothDevices: [BluetoothDeviceInfo] = []
@@ -228,6 +229,7 @@ class AppListPresenter: AppMonitorInteractorOutput {
         systemStats = stats
         append(&cpuHistory, stats.cpuUsage / 100.0)
         append(&gpuHistory, stats.gpu.utilization / 100.0)
+        append(&tempHistory, (stats.sensors.cpuTemperature ?? 0) / 110.0)
         append(&cpuKernelHistory, stats.cpuSystemUsage / 100.0)
         if perCoreHistory.count != stats.perCore.count {
             perCoreHistory = Array(repeating: [], count: stats.perCore.count)

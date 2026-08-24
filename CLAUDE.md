@@ -84,6 +84,7 @@ GPL-3, repo này MIT nên không chép mã):
 | Đĩa | IORegistry `IOBlockStorageDriver` → `Statistics` |
 | Mạng | `getifaddrs` **chỉ trên interface chính** (`SCDynamicStore` PrimaryInterface) — cộng hết mọi interface sẽ đếm trùng khi có VPN/utun; chặn cú nhảy khi bộ đếm reset. `nettop` cho từng tiến trình |
 | Bluetooth | `system_profiler SPBluetoothDataType -json` |
+| Nhiệt độ & quạt | `AppleSMC` qua `IOServiceOpen` + `IOConnectCallStructMethod(selector 2)`. **Đọc không cần root** (chỉ ghi mới cần). Liệt kê khoá **một lần** lúc khởi động (máy M1 Pro có 2051 khoá) rồi mỗi nhịp chỉ đọc khoá đã lọc. Nhóm theo tiền tố: `Tp*` nhân P, `Te*` nhân E, `Tg*` GPU, `Tm*` RAM, `TH*/TN*` ổ lưu trữ, `TB*` pin, `Ts*/TW*` vỏ máy. Quạt: `FNum`, `F#Ac` (RPM), `F#Mn/F#Mx` (min/max), `F#Tg` (mục tiêu). Kiểu dữ liệu `flt `/`sp78`/`ui*`/`fpe2` |
 | Tần số lõi | `IODeviceTree:/arm-io/pmgr` → `voltage-states5-sram` (cụm P) / `voltage-states1-sram` (cụm E), lấy giá trị lớn nhất |
 | GPU (tĩnh) | `MTLCreateSystemDefaultDevice()`: tên, unified memory, `recommendedMaxWorkingSetSize`, `maxBufferLength`, ray tracing |
 | Model đĩa | IORegistry `IOBlockStorageDevice` → `Device Characteristics` (Product Name / Medium Type / Revision), bỏ qua disk image và khe thẻ |
@@ -114,6 +115,7 @@ Presenter cũng nuôi các mảng lịch sử 60 mẫu cho đồ thị và thang
   bộ xử lý logic), Hiện thời gian nhân, Chế độ đồ thị tóm tắt, Xem ▸ tài nguyên, Sao chép
   (đổ số liệu ngăn hiện tại ra clipboard dạng text). Dữ liệu từng lõi lấy bằng
   `host_processor_info(PROCESSOR_CPU_LOAD_INFO)`, phần kernel tách từ `cpu_ticks.system`.
+- Tab Hiệu suất có 7 ngăn: CPU / Bộ nhớ / Đĩa / Mạng / GPU / Bluetooth / Cảm biến.
 - 7 tab: `ProcessesTab`, `PerformanceTab` (CPU/Bộ nhớ/Đĩa/Mạng), `AppHistoryTab`,
   `StartupTab`, `UsersTab`, `DetailsTab`, `ServicesTab`.
 - `FlowLayout` — khối số liệu ở tab Hiệu suất tự xuống dòng; cột thông tin phần cứng bên

@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 enum PerfResource: String, CaseIterable, Identifiable {
-    case cpu, memory, disk, network, gpu, bluetooth
+    case cpu, memory, disk, network, gpu, bluetooth, sensors
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum PerfResource: String, CaseIterable, Identifiable {
         case .network:   return L.t("Mạng", "Network")
         case .gpu:       return "GPU"
         case .bluetooth: return "Bluetooth"
+        case .sensors:   return L.t("Cảm biến", "Sensors")
         }
     }
 }
@@ -122,7 +123,13 @@ struct PerformanceTab: View {
                 .fill(isSelected ? W10.accent : Color.clear)
                 .frame(width: 3)
             Group {
-                if resource == .bluetooth {
+                if resource == .sensors {
+                    Image(systemName: "thermometer.medium")
+                        .font(.system(size: 15))
+                        .foregroundColor(Color(rgb: 0xC0392B))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(Rectangle().stroke(Color(rgb: 0xC0392B), lineWidth: 1))
+                } else if resource == .bluetooth {
                     Image(systemName: "wave.3.right")
                         .font(.system(size: 15))
                         .foregroundColor(W10.btLine)
@@ -182,6 +189,7 @@ struct PerformanceTab: View {
         case .network:   networkGraphs
         case .gpu:       gpuGraphs
         case .bluetooth: bluetoothList
+        case .sensors:   sensorsList
         }
     }
 
@@ -395,6 +403,87 @@ struct PerformanceTab: View {
         .overlay(Rectangle().stroke(W10.border, lineWidth: 1))
     }
 
+    private var sensorsList: some View {
+        let sensors = stats.sensors
+        return VStack(alignment: .leading, spacing: 10) {
+            W10GraphPanel(title: L.t("Nhiệt độ CPU", "CPU temperature"), topRight: "110°C",
+                          bottomLeft: L.t("60 giây", "60 seconds"), bottomRight: "0") {
+                W10Graph(series: [series(for: .sensors)],
+                         gridColor: Color(rgb: 0xF5D0CC),
+                         borderColor: Color(rgb: 0xC0392B))
+            }
+
+            if !sensors.fans.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(L.t("Quạt", "Fans")).font(W10.font(12)).foregroundColor(W10.textDim)
+                    ForEach(sensors.fans) { fan in
+                        HStack(spacing: 8) {
+                            Text(fan.name).font(W10.font()).frame(width: 70, alignment: .leading)
+                            Text(fan.rpmText).font(W10.font()).monospacedDigit()
+                                .frame(width: 90, alignment: .trailing)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Rectangle().fill(Color(rgb: 0xF3F3F3))
+                                    Rectangle().fill(Color(rgb: 0xC0392B).opacity(0.75))
+                                        .frame(width: geo.size.width * fan.percent)
+                                }
+                                .overlay(Rectangle().stroke(W10.border, lineWidth: 1))
+                            }
+                            .frame(height: 14)
+                            Text(String(format: "%.0f – %.0f", fan.minRPM, fan.maxRPM))
+                                .font(W10.font(11)).foregroundColor(W10.textDim)
+                                .frame(width: 110, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    Text(L.t("Nhóm cảm biến", "Sensor group")).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(L.t("Trung bình", "Average")).frame(width: 110, alignment: .trailing)
+                    Text(L.t("Cao nhất", "Maximum")).frame(width: 110, alignment: .trailing)
+                    Text(L.t("Số cảm biến", "Sensors")).frame(width: 110, alignment: .trailing)
+                }
+                .font(W10.font(12))
+                .foregroundColor(W10.textDim)
+                .padding(.horizontal, 6)
+                .frame(height: 24)
+                .overlay(alignment: .bottom) { Rectangle().fill(W10.border).frame(height: 1) }
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(SensorGroup.allCases, id: \.rawValue) { group in
+                            let list = sensors.values(in: group)
+                            if !list.isEmpty {
+                                HStack(spacing: 0) {
+                                    Text(group.title).frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(SensorsInfo.text(sensors.average(group)))
+                                        .frame(width: 110, alignment: .trailing)
+                                    Text(SensorsInfo.text(sensors.maximum(group)))
+                                        .frame(width: 110, alignment: .trailing)
+                                    Text("\(list.count)").frame(width: 110, alignment: .trailing)
+                                }
+                                .font(W10.font())
+                                .monospacedDigit()
+                                .foregroundColor(W10.text)
+                                .padding(.horizontal, 6)
+                                .frame(height: 24)
+                            }
+                        }
+                        if !sensors.available {
+                            Text(L.t("Không đọc được cảm biến", "No sensors available"))
+                                .font(W10.font())
+                                .foregroundColor(W10.textDim)
+                                .padding(.top, 12)
+                        }
+                    }
+                }
+            }
+            .overlay(Rectangle().stroke(W10.border, lineWidth: 1))
+        }
+    }
+
     // MARK: - Dữ liệu từng ngăn (dùng chung cho hiển thị và lệnh Sao chép)
 
     private func paneData() -> (title: String, subtitle: String,
@@ -408,7 +497,9 @@ struct PerformanceTab: View {
                      (L.t("Tiến trình", "Processes"), "\(stats.processCount)"),
                      (L.t("Luồng", "Threads"), "\(stats.threadCount)"),
                      (L.t("Bộ mô tả", "Handles"), "\(stats.handleCount)"),
-                     (L.t("Thời gian hoạt động", "Up time"), stats.uptimeText)],
+                     (L.t("Thời gian hoạt động", "Up time"), stats.uptimeText),
+                     (L.t("Nhiệt độ", "Temperature"), SensorsInfo.text(stats.sensors.cpuTemperature)),
+                     (L.t("Quạt", "Fan"), stats.sensors.fans.first?.rpmText ?? "—")],
                     [(L.t("Tốc độ tối đa (P):", "Max speed (P):"), hw.baseSpeedText),
                      (L.t("Tốc độ tối đa (E):", "Max speed (E):"), hw.efficiencySpeedText),
                      (L.t("Số lõi:", "Cores:"), "\(hw.physicalCores)"),
@@ -441,7 +532,8 @@ struct PerformanceTab: View {
             return (L.t("Đĩa 0 (\(hw.diskName))", "Disk 0 (\(hw.diskName))"), hw.isAppleSilicon ? "SSD" : L.t("Ổ cứng", "Hard drive"),
                     [(L.t("Thời gian hoạt động", "Active time"), String(format: "%.0f%%", stats.diskActive)),
                      (L.t("Tốc độ đọc", "Read speed"), Fmt.rate(stats.diskReadKBs)),
-                     (L.t("Tốc độ ghi", "Write speed"), Fmt.rate(stats.diskWriteKBs))],
+                     (L.t("Tốc độ ghi", "Write speed"), Fmt.rate(stats.diskWriteKBs)),
+                     (L.t("Nhiệt độ", "Temperature"), SensorsInfo.text(stats.sensors.storageTemperature))],
                     [(L.t("Model:", "Model:"), hw.diskModel),
                      (L.t("Loại:", "Type:"), hw.diskMedium),
                      (L.t("Firmware:", "Firmware:"), hw.diskRevision),
@@ -460,7 +552,7 @@ struct PerformanceTab: View {
                      (L.t("Bộ nhớ đang dùng", "Memory in use"), Fmt.bytesAuto(stats.gpu.inUseMemory)),
                      (L.t("Đã cấp phát", "Allocated"), Fmt.bytesAuto(stats.gpu.allocatedMemory)),
                      (L.t("Nhiệt độ", "Temperature"),
-                      stats.gpu.temperature.map { String(format: "%.0f°C", $0) } ?? "—"),
+                      SensorsInfo.text(stats.gpu.temperature ?? stats.sensors.gpuTemperature)),
                      (L.t("Xung nhân", "Core clock"),
                       stats.gpu.coreClock.map { "\($0) MHz" } ?? "—")],
                     [(L.t("Tên GPU:", "GPU name:"), hw.gpuName),
@@ -474,6 +566,52 @@ struct PerformanceTab: View {
                      (L.t("Buffer tối đa:", "Max buffer:"), Fmt.bytesAuto(hw.metalMaxBuffer)),
                      ("Ray tracing:", hw.metalRaytracing ? L.t("Có", "Yes") : L.t("Không", "No")),
                      (L.t("Tổng RAM:", "Total RAM:"), Fmt.gb(hw.memTotal))])
+        case .sensors:
+            let sensors = stats.sensors
+            var values: [(String, String)] = [
+                (L.t("CPU", "CPU"), SensorsInfo.text(sensors.cpuTemperature)),
+                ("GPU", SensorsInfo.text(sensors.gpuTemperature)),
+                (L.t("Ổ lưu trữ", "Storage"), SensorsInfo.text(sensors.storageTemperature)),
+                (L.t("Pin", "Battery"), SensorsInfo.text(sensors.batteryTemperature))
+            ]
+            for fan in sensors.fans { values.append((fan.name, fan.rpmText)) }
+            var info: [(String, String)] = [
+                (L.t("Số cảm biến:", "Sensors:"), "\(sensors.temperatures.count)"),
+                (L.t("Số quạt:", "Fans:"), "\(sensors.fans.count)")
+            ]
+            for fan in sensors.fans {
+                info.append(("\(fan.name) min/max:",
+                             String(format: "%.0f / %.0f RPM", fan.minRPM, fan.maxRPM)))
+                if fan.target > 0 {
+                    info.append(("\(fan.name) " + L.t("mục tiêu:", "target:"),
+                                 String(format: "%.0f RPM", fan.target)))
+                }
+            }
+            info.append((L.t("Nguồn:", "Source:"), "AppleSMC"))
+            return (L.t("Cảm biến", "Sensors"), hw.machineModel, values, info)
+        case .sensors:
+            let sensors = stats.sensors
+            var values: [(String, String)] = [
+                (L.t("CPU", "CPU"), SensorsInfo.text(sensors.cpuTemperature)),
+                ("GPU", SensorsInfo.text(sensors.gpuTemperature)),
+                (L.t("Ổ lưu trữ", "Storage"), SensorsInfo.text(sensors.storageTemperature)),
+                (L.t("Pin", "Battery"), SensorsInfo.text(sensors.batteryTemperature))
+            ]
+            for fan in sensors.fans { values.append((fan.name, fan.rpmText)) }
+            var info: [(String, String)] = [
+                (L.t("Số cảm biến:", "Sensors:"), "\(sensors.temperatures.count)"),
+                (L.t("Số quạt:", "Fans:"), "\(sensors.fans.count)")
+            ]
+            for fan in sensors.fans {
+                info.append(("\(fan.name) min/max:",
+                             String(format: "%.0f / %.0f RPM", fan.minRPM, fan.maxRPM)))
+                if fan.target > 0 {
+                    info.append(("\(fan.name) " + L.t("mục tiêu:", "target:"),
+                                 String(format: "%.0f RPM", fan.target)))
+                }
+            }
+            info.append((L.t("Nguồn:", "Source:"), "AppleSMC"))
+            return (L.t("Cảm biến", "Sensors"), hw.machineModel, values, info)
         case .bluetooth:
             let connected = presenter.bluetoothDevices.filter { $0.connected }.count
             let controller = presenter.bluetoothController
@@ -588,6 +726,7 @@ struct PerformanceTab: View {
         case .network:   return adapter.displayName
         case .gpu:       return "GPU"
         case .bluetooth: return "Bluetooth"
+        case .sensors:   return L.t("Cảm biến", "Sensors")
         }
     }
 
@@ -612,6 +751,10 @@ struct PerformanceTab: View {
         case .bluetooth:
             let connected = presenter.bluetoothDevices.filter { $0.connected }.count
             return L.t("\(connected) thiết bị kết nối", "\(connected) devices connected")
+        case .sensors:
+            let cpu = SensorsInfo.text(stats.sensors.cpuTemperature)
+            let fan = stats.sensors.fans.first.map { String(format: "%.0f RPM", $0.rpm) } ?? "—"
+            return "\(cpu)  \(fan)"
         }
     }
 
@@ -623,6 +766,7 @@ struct PerformanceTab: View {
         case .network: return W10.netLine
         case .gpu:     return W10.gpuLine
         case .bluetooth: return W10.btLine
+        case .sensors: return Color(rgb: 0xC0392B)
         }
     }
 
@@ -656,6 +800,10 @@ struct PerformanceTab: View {
             samples = []
             line = W10.btLine
             fill = W10.btFill
+        case .sensors:
+            samples = presenter.tempHistory
+            line = Color(rgb: 0xC0392B)
+            fill = Color(rgb: 0xF5D0CC)
         }
         return W10Series(samples: samples, line: line, fill: fill.opacity(fillOnly ? 0.85 : 1))
     }

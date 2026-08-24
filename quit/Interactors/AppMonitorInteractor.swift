@@ -66,6 +66,7 @@ class AppMonitorInteractor {
 
     private var stats = SystemStats()
     private let gpuReader = GPUReader()
+    private let smcReader = SMCReader()
 
     init() {
         var tbInfo = mach_timebase_info_data_t()
@@ -136,6 +137,7 @@ class AppMonitorInteractor {
         stats.perCore = perCoreUsage()
         applyClusterUsage()
         stats.gpu = gpuReader.read()
+        stats.sensors = smcReader.read()
 
         // Bộ nhớ
         applyMemoryStats()
