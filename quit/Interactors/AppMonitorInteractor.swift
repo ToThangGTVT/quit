@@ -319,7 +319,8 @@ class AppMonitorInteractor {
                 threads: task.threads,
                 handles: handles,
                 cpuTime: Double(currentCpuTime) * machNsRatio / 1_000_000_000.0,
-                netTotalBytes: curRx + curTx,
+                netRxBytes: curRx,
+                netTxBytes: curTx,
                 category: AppEntity.categorize(path: path, app: nsApp),
                 user: user,
                 runningApp: nsApp

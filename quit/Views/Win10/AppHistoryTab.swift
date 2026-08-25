@@ -21,6 +21,8 @@ struct AppHistoryTab: View {
         let sorted: [AppListPresenter.AppUsage]
         switch sortKey {
         case "name":    sorted = list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case "netIn":   sorted = list.sorted { $0.netIn < $1.netIn }
+        case "netOut":  sorted = list.sorted { $0.netOut < $1.netOut }
         case "network": sorted = list.sorted { $0.network < $1.network }
         default:        sorted = list.sorted { $0.cpuTime < $1.cpuTime }
         }
@@ -46,7 +48,11 @@ struct AppHistoryTab: View {
                       }),
             W10Column(id: "cpuTime", title: L.t("Thời gian CPU", "CPU time"), width: 120,
                       text: { Fmt.cpuTime($0.cpuTime) }),
-            W10Column(id: "network", title: L.t("Mạng", "Network"), width: 110,
+            W10Column(id: "netIn", title: L.t("Mạng vào", "Network in"), width: 100,
+                      text: { Fmt.bytesAuto($0.netIn) }),
+            W10Column(id: "netOut", title: L.t("Mạng ra", "Network out"), width: 100,
+                      text: { Fmt.bytesAuto($0.netOut) }),
+            W10Column(id: "network", title: L.t("Tổng mạng", "Network total"), width: 110,
                       text: { Fmt.bytesAuto($0.network) })
         ]
     }

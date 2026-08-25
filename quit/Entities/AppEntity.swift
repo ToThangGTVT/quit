@@ -31,11 +31,13 @@ struct AppEntity: Identifiable {
     let threads: Int
     let handles: Int
     let cpuTime: Double       // giây, tích lũy từ lúc tiến trình chạy
-    let netTotalBytes: UInt64 // byte, tích lũy
+    let netRxBytes: UInt64    // byte nhận, tích lũy
+    let netTxBytes: UInt64    // byte gửi, tích lũy
     let category: ProcessCategory
     let user: String
     let runningApp: NSRunningApplication?
 
+    var netTotalBytes: UInt64 { netRxBytes + netTxBytes }
     var diskKBs: Double { diskReadKBs + diskWriteKBs }
     var netMbps: Double { (netRxKBs + netTxKBs) * 8.0 / 1000.0 }
 

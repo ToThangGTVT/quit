@@ -88,7 +88,9 @@ struct DetailWindowView: View {
             let count = presenter.rawEntities.count
             return L.t("\(count) tiến trình đang chạy", "\(count) processes running")
         case .appHistory:
-            let since = Self.bootText(withSeconds: false)
+            // Mốc là lúc bật quit (hoặc lần bấm "Xoá lịch sử" gần nhất), không
+            // phải lúc khởi động máy — số liệu đếm từ đúng thời điểm đó.
+            let since = Self.timeText(presenter.usageSince, withSeconds: false)
             return L.t("Mức sử dụng tài nguyên từ \(since)", "Resource usage since \(since)")
         case .startup:
             let boot = Self.bootText(withSeconds: true)
@@ -104,9 +106,13 @@ struct DetailWindowView: View {
     }
 
     private static func bootText(withSeconds: Bool) -> String {
+        timeText(HardwareInfo.current.bootTime, withSeconds: withSeconds)
+    }
+
+    private static func timeText(_ date: Date, withSeconds: Bool) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = withSeconds ? "dd/MM/yyyy HH:mm:ss" : "dd/MM/yyyy HH:mm"
-        return formatter.string(from: HardwareInfo.current.bootTime)
+        return formatter.string(from: date)
     }
 
     @ViewBuilder

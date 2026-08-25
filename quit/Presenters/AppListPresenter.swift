@@ -44,7 +44,19 @@ class AppListPresenter: AppMonitorInteractorOutput {
     private(set) var netRxHistory: [Double] = []    // Mbps
     private(set) var netTxHistory: [Double] = []    // Mbps
 
-    private var historyBaseline: [String: (cpu: Double, net: UInt64)] = [:]
+    /// Tab Lịch sử ứng dụng cộng dồn phần **phát sinh thêm sau mỗi nhịp**, chứ
+    /// không lấy "tổng hiện tại trừ mốc". Tổng hiện tại của một nhóm sẽ tụt khi
+    /// một tiến trình con thoát (Chrome đóng tab), kiểu trừ mốc sẽ làm số nhảy lùi
+    /// rồi kẹt ở 0; cộng dồn delta thì phần đã tiêu không bao giờ mất.
+    private var usageTotals: [String: AppTotals] = [:]
+    private var lastSeenTotals: [String: AppTotals] = [:]
+    private(set) var usageSince = Date()
+
+    struct AppTotals {
+        var cpu: Double = 0
+        var rx: UInt64 = 0
+        var tx: UInt64 = 0
+    }
 
     private let interactor: AppMonitorInteractor
 
@@ -129,36 +141,102 @@ class AppListPresenter: AppMonitorInteractorOutput {
         let name: String
         let icon: NSImage?
         let cpuTime: Double
-        let network: UInt64
+        let netIn: UInt64
+        let netOut: UInt64
+
+        var network: UInt64 { netIn + netOut }
     }
 
     var appUsage: [AppUsage] {
-        var grouped: [String: AppUsage] = [:]
+        var names: [String: (name: String, icon: NSImage?)] = [:]
         for entity in rawEntities where entity.isGUIApp {
-            let key = entity.runningApp?.bundleIdentifier ?? entity.name
-            let base = historyBaseline[key] ?? (cpu: 0, net: 0)
-            let cpu = max(entity.cpuTime - base.cpu, 0)
-            let net = entity.netTotalBytes >= base.net ? entity.netTotalBytes - base.net : 0
-            if let existing = grouped[key] {
-                grouped[key] = AppUsage(id: key, name: existing.name, icon: existing.icon,
-                                        cpuTime: existing.cpuTime + cpu,
-                                        network: existing.network + net)
-            } else {
-                grouped[key] = AppUsage(id: key, name: entity.name, icon: entity.icon,
-                                        cpuTime: cpu, network: net)
+            if names[Self.key(for: entity)] == nil {
+                names[Self.key(for: entity)] = (entity.name, entity.icon)
             }
         }
-        return grouped.values.sorted { $0.cpuTime > $1.cpuTime }
+        // Chỉ liệt kê app còn đang chạy, nhưng lấy số đã cộng dồn.
+        return names.map { key, label in
+            let total = usageTotals[key] ?? AppTotals()
+            return AppUsage(id: key, name: label.name, icon: label.icon,
+                            cpuTime: total.cpu, netIn: total.rx, netOut: total.tx)
+        }
+        .sorted { $0.cpuTime > $1.cpuTime }
     }
 
     func clearUsageHistory() {
-        var baseline: [String: (cpu: Double, net: UInt64)] = [:]
-        for entity in rawEntities where entity.isGUIApp {
-            let key = entity.runningApp?.bundleIdentifier ?? entity.name
-            let previous = baseline[key] ?? (cpu: 0, net: 0)
-            baseline[key] = (previous.cpu + entity.cpuTime, previous.net + entity.netTotalBytes)
+        usageTotals.removeAll()
+        usageSince = Date()
+    }
+
+    private static func key(for entity: AppEntity) -> String {
+        entity.runningApp?.bundleIdentifier ?? entity.name
+    }
+
+    /// Cộng phần tăng thêm của nhịp này vào bảng tích luỹ.
+    ///
+    /// Nhóm mới thấy lần đầu chỉ được ghi mốc, không cộng — nếu không thì ngay
+    /// nhịp đầu sau khi bật app, toàn bộ thời gian CPU từ đời trước của mọi tiến
+    /// trình sẽ đổ hết vào bảng.
+    private func accumulateUsage() {
+        let owners = ownerKeys()
+        var current: [String: AppTotals] = [:]
+        for entity in rawEntities {
+            guard let key = owners[entity.id] else { continue }
+            var total = current[key] ?? AppTotals()
+            total.cpu += entity.cpuTime
+            total.rx += entity.netRxBytes
+            total.tx += entity.netTxBytes
+            current[key] = total
         }
-        historyBaseline = baseline
+
+        for (key, total) in current {
+            guard let last = lastSeenTotals[key] else { continue }
+            var acc = usageTotals[key] ?? AppTotals()
+            if total.cpu > last.cpu { acc.cpu += total.cpu - last.cpu }
+            if total.rx > last.rx { acc.rx += total.rx - last.rx }
+            if total.tx > last.tx { acc.tx += total.tx - last.tx }
+            usageTotals[key] = acc
+        }
+        lastSeenTotals = current
+    }
+
+    /// pid -> ứng dụng GUI sở hữu nó, tìm bằng cách leo ngược chuỗi ppid.
+    ///
+    /// Bắt buộc phải leo, vì tiến trình ôm socket thường KHÔNG phải tiến trình có
+    /// giao diện: toàn bộ lưu lượng của Chrome nằm ở "Google Chrome Helper", mà
+    /// helper thì không có `NSRunningApplication` nên lọc theo `isGUIApp` sẽ mất
+    /// sạch. Tiến trình không truy được về app GUI nào (daemon hệ thống) bị bỏ qua.
+    private func ownerKeys() -> [Int32: String] {
+        let byPid = Dictionary(rawEntities.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var owners: [Int32: String] = [:]
+        var orphans = Set<Int32>()
+
+        for entity in rawEntities {
+            guard owners[entity.id] == nil, !orphans.contains(entity.id) else { continue }
+            var chain: [Int32] = []
+            var node: AppEntity? = entity
+            var found: String?
+
+            // Chặn số bước: chuỗi ppid hỏng (pid bị dùng lại) có thể tạo vòng lặp.
+            var hops = 0
+            while let current = node, hops < 64 {
+                if let cached = owners[current.id] { found = cached; break }
+                if orphans.contains(current.id) { break }
+                if current.isGUIApp { found = Self.key(for: current); break }
+                chain.append(current.id)
+                node = current.ppid > 0 ? byPid[current.ppid] : nil
+                hops += 1
+            }
+
+            if let found {
+                owners[entity.id] = found
+                for pid in chain { owners[pid] = found }
+            } else {
+                orphans.insert(entity.id)
+                for pid in chain { orphans.insert(pid) }
+            }
+        }
+        return owners
     }
 
     // MARK: - Output
@@ -167,6 +245,8 @@ class AppListPresenter: AppMonitorInteractorOutput {
         rawEntities = entities
         tree = Self.buildTree(entities)
         systemStats = stats
+
+        accumulateUsage()
     }
 
     private static func buildTree(_ entities: [AppEntity]) -> ProcessTree {
@@ -218,7 +298,8 @@ class AppListPresenter: AppMonitorInteractorOutput {
             threads: group.reduce(0) { $0 + $1.threads },
             handles: group.reduce(0) { $0 + $1.handles },
             cpuTime: group.reduce(0) { $0 + $1.cpuTime },
-            netTotalBytes: group.reduce(0) { $0 + $1.netTotalBytes },
+            netRxBytes: group.reduce(0) { $0 + $1.netRxBytes },
+            netTxBytes: group.reduce(0) { $0 + $1.netTxBytes },
             category: root.category,
             user: root.user,
             runningApp: root.runningApp
