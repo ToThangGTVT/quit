@@ -247,7 +247,7 @@ private struct W10Row<Row: Identifiable>: View where Row.ID: Hashable {
         }
         .frame(height: rowHeight)
         .overlay {
-            if isSelected { Rectangle().stroke(W10.selectionEdge, lineWidth: 1) }
+            if isSelected { Rectangle().strokeBorder(W10.selectionEdge, lineWidth: 1) }
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }

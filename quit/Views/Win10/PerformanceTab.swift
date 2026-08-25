@@ -128,13 +128,13 @@ struct PerformanceTab: View {
                         .font(.system(size: 15))
                         .foregroundColor(Color(rgb: 0xC0392B))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .overlay(Rectangle().stroke(Color(rgb: 0xC0392B), lineWidth: 1))
+                        .overlay(Rectangle().strokeBorder(Color(rgb: 0xC0392B), lineWidth: 1))
                 } else if resource == .bluetooth {
                     Image(systemName: "wave.3.right")
                         .font(.system(size: 15))
                         .foregroundColor(W10.btLine)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .overlay(Rectangle().stroke(W10.btLine, lineWidth: 1))
+                        .overlay(Rectangle().strokeBorder(W10.btLine, lineWidth: 1))
                 } else {
                     W10Graph(series: [series(for: resource, fillOnly: true)],
                              showGrid: false,
@@ -400,7 +400,7 @@ struct PerformanceTab: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .overlay(Rectangle().stroke(W10.border, lineWidth: 1))
+        .overlay(Rectangle().strokeBorder(W10.border, lineWidth: 1))
     }
 
     private var sensorsList: some View {
@@ -427,7 +427,7 @@ struct PerformanceTab: View {
                                     Rectangle().fill(Color(rgb: 0xC0392B).opacity(0.75))
                                         .frame(width: geo.size.width * fan.percent)
                                 }
-                                .overlay(Rectangle().stroke(W10.border, lineWidth: 1))
+                                .overlay(Rectangle().strokeBorder(W10.border, lineWidth: 1))
                             }
                             .frame(height: 14)
                             Text(String(format: "%.0f – %.0f", fan.minRPM, fan.maxRPM))
@@ -480,7 +480,7 @@ struct PerformanceTab: View {
                     }
                 }
             }
-            .overlay(Rectangle().stroke(W10.border, lineWidth: 1))
+            .overlay(Rectangle().strokeBorder(W10.border, lineWidth: 1))
         }
     }
 
@@ -710,7 +710,7 @@ struct PerformanceTab: View {
         HStack(spacing: 4) {
             Rectangle().fill(color)
                 .frame(width: 9, height: 9)
-                .overlay(Rectangle().stroke(W10.memLine.opacity(0.7), lineWidth: 0.5))
+                .overlay(W10HairlineBorder(color: W10.memLine, opacity: 0.7))
             Text(label).font(W10.font(11)).foregroundColor(W10.textDim).lineLimit(1)
         }
         .fixedSize()

@@ -17,17 +17,27 @@ struct W10Graph: View {
     var gridColumns: Int = 10
     var gridRows: Int = 5
 
+    @Environment(\.displayScale) private var displayScale
+
+    /// Đường đồ thị là nét xiên nên không căn được vào lưới điểm ảnh; ở màn 1x
+    /// nét 1.2pt trải sang hai cột pixel thành vệt mờ, nên hạ về đúng 1 điểm ảnh.
+    private var curveWidth: CGFloat { displayScale >= 2 ? 1.2 : 1 }
+
     var body: some View {
         Canvas { context, size in
             if showGrid {
                 var grid = Path()
+                // Toạ độ chia đều hầu như luôn ra số lẻ; nếu vẽ thẳng thì mỗi đường
+                // kẻ bị khử răng cưa thành hai hàng pixel nhạt (rõ nhất ở màn 1x).
                 for column in 1..<gridColumns {
-                    let x = size.width * CGFloat(column) / CGFloat(gridColumns)
+                    let raw = size.width * CGFloat(column) / CGFloat(gridColumns)
+                    let x = W10.snap(raw, width: 1, scale: displayScale)
                     grid.move(to: CGPoint(x: x, y: 0))
                     grid.addLine(to: CGPoint(x: x, y: size.height))
                 }
                 for row in 1..<gridRows {
-                    let y = size.height * CGFloat(row) / CGFloat(gridRows)
+                    let raw = size.height * CGFloat(row) / CGFloat(gridRows)
+                    let y = W10.snap(raw, width: 1, scale: displayScale)
                     grid.move(to: CGPoint(x: 0, y: y))
                     grid.addLine(to: CGPoint(x: size.width, y: y))
                 }
@@ -56,14 +66,14 @@ struct W10Graph: View {
                     context.fill(area, with: .color(fill))
                 }
 
-                let style = StrokeStyle(lineWidth: 1.2,
+                let style = StrokeStyle(lineWidth: curveWidth,
                                         dash: item.dashed ? [3, 2] : [])
                 context.stroke(line, with: .color(item.line), style: style)
             }
         }
         .overlay {
             if let borderColor {
-                Rectangle().stroke(borderColor, lineWidth: 1)
+                Rectangle().strokeBorder(borderColor, lineWidth: 1)
             }
         }
     }
@@ -106,20 +116,37 @@ struct W10CompositionBar: View {
     let segments: [Segment]
     let borderColor: Color
 
+    @Environment(\.displayScale) private var displayScale
+
     var body: some View {
         GeometryReader { geo in
-            let total = max(segments.reduce(0) { $0 + $1.value }, 0.0001)
+            let widths = snappedWidths(across: geo.size.width)
             HStack(spacing: 0) {
-                ForEach(segments) { segment in
+                ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
                     Rectangle()
                         .fill(segment.color)
-                        .frame(width: geo.size.width * CGFloat(segment.value / total))
+                        .frame(width: widths[index])
                         .overlay(alignment: .trailing) {
                             Rectangle().fill(borderColor.opacity(0.6)).frame(width: 1)
                         }
                 }
             }
         }
-        .overlay(Rectangle().stroke(borderColor, lineWidth: 1))
+        .overlay(Rectangle().strokeBorder(borderColor, lineWidth: 1))
+    }
+
+    /// Bề rộng từng phần, làm tròn ranh giới về số nguyên điểm ảnh (phần dư dồn
+    /// sang phần kế tiếp) để vạch ngăn không rơi vào giữa hai điểm ảnh.
+    private func snappedWidths(across width: CGFloat) -> [CGFloat] {
+        let scale = max(displayScale, 1)
+        let total = max(segments.reduce(0) { $0 + $1.value }, 0.0001)
+        var edge: CGFloat = 0
+        var previousEdge: CGFloat = 0
+        return segments.map { segment in
+            edge += width * CGFloat(segment.value / total)
+            let snapped = min((edge * scale).rounded() / scale, width)
+            defer { previousEdge = snapped }
+            return max(snapped - previousEdge, 0)
+        }
     }
 }

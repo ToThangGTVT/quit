@@ -108,4 +108,38 @@ enum W10 {
     static func diskHeat(_ kbs: Double) -> Double { kbs / 51200.0 }
 
     static func netHeat(_ mbps: Double) -> Double { mbps / 5.0 }
+
+    // MARK: - Căn nét theo lưới điểm ảnh
+
+    /// Bề rộng đúng bằng một điểm ảnh vật lý: 0.5pt trên màn Retina (2x), 1pt trên
+    /// màn 1x. Viết cứng 0.5 sẽ thành nửa điểm ảnh ở 1x và bị khử răng cưa thành
+    /// một vệt xám nhoè.
+    static func hairline(_ scale: CGFloat) -> CGFloat { 1 / max(scale, 1) }
+
+    /// Đưa tâm của một nét dày `width` về đúng lưới điểm ảnh. Nét có bề rộng lẻ
+    /// (1px) phải nằm giữa điểm ảnh, nét chẵn (2px) phải nằm trên đường biên —
+    /// sai quy tắc này thì nét bị trải đều sang hai hàng pixel kề nhau.
+    static func snap(_ value: CGFloat, width: CGFloat, scale: CGFloat) -> CGFloat {
+        let s = max(scale, 1)
+        let pixels = max((width * s).rounded(), 1)
+        let offset: CGFloat = pixels.truncatingRemainder(dividingBy: 2) == 0 ? 0 : 0.5
+        return ((value * s).rounded() + offset) / s
+    }
+}
+
+/// Viền mảnh nằm **gọn bên trong** khung, dày đúng một điểm ảnh vật lý.
+///
+/// Thay cho `Rectangle().stroke(...)`: `stroke` vẽ nét cưỡi lên chính đường biên
+/// (một nửa lọt ra ngoài), nên ở màn 1x nét 1pt bị chia đôi sang hai hàng điểm ảnh
+/// với alpha 50% mỗi bên thay vì một hàng đặc.
+struct W10HairlineBorder: View {
+    var color: Color
+    var opacity: Double = 1
+
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        Rectangle()
+            .strokeBorder(color.opacity(opacity), lineWidth: W10.hairline(displayScale))
+    }
 }
