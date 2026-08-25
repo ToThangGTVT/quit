@@ -143,10 +143,13 @@ struct PerformanceTab: View {
             }
             .frame(width: width < 170 ? 44 : 64, height: 36)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title(resource))
-                    .font(W10.font(12))
-                    .foregroundColor(W10.text)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(title(resource))
+                        .font(W10.font(12))
+                        .foregroundColor(W10.text)
+                        .lineLimit(1)
+                    if resource == .memory { pressureDot }
+                }
                 Text(sidebarSubtitle(resource))
                     .font(W10.font(11))
                     .foregroundColor(W10.textDim)
@@ -163,6 +166,30 @@ struct PerformanceTab: View {
             state.perfResource = resource
             if resource == .bluetooth { presenter.refreshBluetooth() }
         }
+    }
+
+    /// Chấm áp lực bộ nhớ: xanh / vàng / đỏ, đọc từ
+    /// `kern.memorystatus_vm_pressure_level` (1 thấp / 2 vừa / 4 cao).
+    ///
+    /// Áp lực khác với phần trăm đã dùng: macOS chủ động giữ RAM đầy bằng cache
+    /// và bộ nhớ nén, nên 84% vẫn có thể là áp lực thấp. Chấm này mới là thứ cho
+    /// biết máy có đang thiếu RAM thật hay không.
+    private var pressureDot: some View {
+        let stats = presenter.systemStats
+        return dot(stats.pressureColor, size: 8)
+            .help("\(Self.pressureLabel): \(stats.pressureText)")
+    }
+
+    /// Nhãn dùng chung, vừa để dựng hàng số liệu vừa để nhận ra chính hàng đó
+    /// trong `bottom` mà tô màu — nên phải đi qua đúng một chỗ.
+    private static var pressureLabel: String { L.t("Áp lực bộ nhớ", "Memory pressure") }
+
+    private func dot(_ color: Color, size: CGFloat) -> some View {
+        Circle()
+            .fill(color)
+            .overlay(Circle().strokeBorder(Color.black.opacity(0.25), lineWidth: 1))
+            .frame(width: size, height: size)
+            .fixedSize()
     }
 
     // MARK: - Ngăn phải
@@ -520,9 +547,9 @@ struct PerformanceTab: View {
                      (L.t("Khả dụng", "Available"), Fmt.gb(stats.memAvailable)),
                      (L.t("Đã lưu đệm", "Cached"), Fmt.gb(stats.memCached)),
                      ("Wired", Fmt.gb(stats.memWired)),
-                     ("Swap", "\(Fmt.mb(stats.swapUsed)) / \(Fmt.gb(stats.swapTotal))")],
+                     ("Swap", "\(Fmt.mb(stats.swapUsed)) / \(Fmt.gb(stats.swapTotal))"),
+                     (Self.pressureLabel, stats.pressureText)],
                     [(L.t("Tổng dung lượng:", "Total capacity:"), Fmt.gb(hw.memTotal)),
-                     (L.t("Áp lực bộ nhớ:", "Memory pressure:"), stats.pressureText),
                      (L.t("Đã dùng:", "Used:"), String(format: "%.0f%%", stats.memoryUsagePercentage)),
                      (L.t("Kích thước trang:", "Page size:"), "\(hw.pageSize / 1024) KB"),
                      (L.t("Swap tổng:", "Swap total:"), Fmt.gb(stats.swapTotal)),
@@ -655,7 +682,9 @@ struct PerformanceTab: View {
         HStack(alignment: .top, spacing: 18) {
             FlowLayout(spacing: 22, lineSpacing: 12) {
                 ForEach(values, id: \.0) { item in
-                    stat(item.0, item.1)
+                    stat(item.0, item.1,
+                         accent: item.0 == Self.pressureLabel
+                             ? presenter.systemStats.pressureColor : nil)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -686,10 +715,13 @@ struct PerformanceTab: View {
         }
     }
 
-    private func stat(_ label: String, _ value: String) -> some View {
+    private func stat(_ label: String, _ value: String, accent: Color? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(label).font(W10.font(12)).foregroundColor(W10.textDim).lineLimit(1)
-            Text(value).font(W10.font(20, .light)).foregroundColor(W10.text).lineLimit(1)
+            HStack(spacing: 6) {
+                if let accent { dot(accent, size: 10) }
+                Text(value).font(W10.font(20, .light)).foregroundColor(W10.text).lineLimit(1)
+            }
         }
         .fixedSize()
     }
